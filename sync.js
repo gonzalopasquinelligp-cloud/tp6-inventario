@@ -1,6 +1,6 @@
 // Estado de la transferencia automática a Google Sheets.
-import { rpc, leer, puede } from "../api.js";
-import { esc, aviso, ICON, fechaHora, tabla, toast } from "../ui.js";
+import { rpc, leer, puede } from "./api.js";
+import { esc, aviso, ICON, fechaHora, tabla, toast } from "./ui.js";
 
 let t = null;
 export function destruir() { clearInterval(t); }

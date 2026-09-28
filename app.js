@@ -3,16 +3,16 @@ import { sb, configurado, estado, cargarPerfil, cargarMaestros, puede, ahoraCont
 import { esc, aviso, ICON, fechaHora, modal } from "./ui.js";
 
 const RUTAS = [
-  { id: "inicio", t: "Inicio", icon: "inicio", rol: "operario", mod: () => import("./vistas/inicio.js") },
-  { id: "consulta", t: "Consultar stock", icon: "buscar", rol: "operario", mod: () => import("./vistas/consulta.js") },
-  { id: "ingreso", t: "Ingreso de mercadería", icon: "ingreso", rol: "operario", mod: () => import("./vistas/movimiento.js"), grupo: "Operación" },
-  { id: "egreso", t: "Egreso por venta", icon: "egreso", rol: "operario", mod: () => import("./vistas/movimiento.js") },
-  { id: "retorno", t: "Retorno de venta", icon: "ingreso", rol: "operario", mod: () => import("./vistas/movimiento.js") },
-  { id: "conteo", t: "Conteo cíclico", icon: "conteo", rol: "operario", mod: () => import("./vistas/conteo.js") },
-  { id: "conciliacion", t: "Conciliación", icon: "conciliar", rol: "operario", mod: () => import("./vistas/conciliacion.js"), grupo: "Control" },
-  { id: "informes", t: "Informes", icon: "informe", rol: "operario", mod: () => import("./vistas/informes.js") },
-  { id: "sync", t: "Google Sheets", icon: "sync", rol: "operario", mod: () => import("./vistas/sync.js") },
-  { id: "admin", t: "Administración", icon: "admin", rol: "administrador", mod: () => import("./vistas/admin.js"), grupo: "Sistema" },
+  { id: "inicio", t: "Inicio", icon: "inicio", rol: "operario", mod: () => import("./inicio.js") },
+  { id: "consulta", t: "Consultar stock", icon: "buscar", rol: "operario", mod: () => import("./consulta.js") },
+  { id: "ingreso", t: "Ingreso de mercadería", icon: "ingreso", rol: "operario", mod: () => import("./movimiento.js"), grupo: "Operación" },
+  { id: "egreso", t: "Egreso por venta", icon: "egreso", rol: "operario", mod: () => import("./movimiento.js") },
+  { id: "retorno", t: "Retorno de venta", icon: "ingreso", rol: "operario", mod: () => import("./movimiento.js") },
+  { id: "conteo", t: "Conteo cíclico", icon: "conteo", rol: "operario", mod: () => import("./conteo.js") },
+  { id: "conciliacion", t: "Conciliación", icon: "conciliar", rol: "operario", mod: () => import("./conciliacion.js"), grupo: "Control" },
+  { id: "informes", t: "Informes", icon: "informe", rol: "operario", mod: () => import("./informes.js") },
+  { id: "sync", t: "Google Sheets", icon: "sync", rol: "operario", mod: () => import("./sync.js") },
+  { id: "admin", t: "Administración", icon: "admin", rol: "administrador", mod: () => import("./admin.js"), grupo: "Sistema" },
 ];
 const MOVIL = ["inicio", "consulta", "conteo", "conciliacion"];
 

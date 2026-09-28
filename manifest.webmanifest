@@ -1,0 +1,10 @@
+{
+  "name": "TP6 Inventario · Conteo cíclico",
+  "short_name": "TP6 Inventario",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f3f5f8",
+  "theme_color": "#1d4ed8",
+  "lang": "es-AR",
+  "icons": [{ "src": "icono.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

@@ -1,6 +1,6 @@
 // Administración: usuarios y roles, productos, posiciones, QR y reloj de simulación.
-import { rpc, leer, estado, cargarMaestros } from "../api.js";
-import { esc, aviso, ICON, fechaHora, tabla, pedir, toast } from "../ui.js";
+import { rpc, leer, estado, cargarMaestros } from "./api.js";
+import { esc, aviso, ICON, fechaHora, tabla, pedir, toast } from "./ui.js";
 
 export async function render(el) {
   const [usuarios, cfg, audit] = await Promise.all([
@@ -27,8 +27,8 @@ export async function render(el) {
         { t: "", html: (p) => `<button class="btn chico" data-edit="${esc(p.codigo)}">Editar</button>` }], estado.productos)}
     </div>
     <div class="panel"><div class="panel-cab"><h2>Posiciones del rack</h2>
-      <div class="btns"><a class="btn chico" href="qr/QR_posiciones_A1-G4.pdf" target="_blank">${ICON.qr} QR de posiciones (PDF)</a>
-      <a class="btn chico" href="qr/QR_productos.pdf" target="_blank">${ICON.qr} Etiquetas de productos (PDF)</a></div></div>
+      <div class="btns"><a class="btn chico" href="QR_posiciones_A1-G4.pdf" target="_blank">${ICON.qr} QR de posiciones (PDF)</a>
+      <a class="btn chico" href="QR_productos.pdf" target="_blank">${ICON.qr} Etiquetas de productos (PDF)</a></div></div>
       <div class="flex">${estado.posiciones.map((p) => `<label class="check" style="min-width:74px"><input type="checkbox" data-pos="${esc(p.codigo)}" ${p.activa ? "checked" : ""}> ${esc(p.codigo)}</label>`).join("")}</div>
       <div class="ayuda">Desmarcar = desactivar (solo si la posición no tiene stock).</div>
     </div>

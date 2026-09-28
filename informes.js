@@ -1,6 +1,6 @@
 // Informes: disponibilidad, historial de movimientos, conteos, diferencias, trimestral y caso TP6.
-import { rpc, leer, estado } from "../api.js";
-import { esc, num, signo, claseSigno, aviso, ICON, fecha, fechaHora, tabla, chip, CATEGORIAS, ESTADOS_REV, descargarCSV, TZ } from "../ui.js";
+import { rpc, leer, estado } from "./api.js";
+import { esc, num, signo, claseSigno, aviso, ICON, fecha, fechaHora, tabla, chip, CATEGORIAS, ESTADOS_REV, descargarCSV, TZ } from "./ui.js";
 
 const PESTANAS = [
   ["disp", "Disponibilidad"], ["movs", "Movimientos"], ["conteos", "Conteos"], ["difs", "Diferencias"], ["trim", "Trimestral"], ["caso", "Caso TP6"],
