@@ -1,9 +1,9 @@
-// Informes: disponibilidad, historial de movimientos, conteos, diferencias, trimestral y caso TP6.
+// Informes: disponibilidad, historial de movimientos, conteos, diferencias, trimestral y conteo histórico del 14/10.
 import { rpc, leer, estado } from "./api.js";
 import { esc, num, signo, claseSigno, aviso, ICON, fecha, fechaHora, tabla, chip, CATEGORIAS, ESTADOS_REV, descargarCSV, TZ } from "./ui.js";
 
 const PESTANAS = [
-  ["disp", "Disponibilidad"], ["movs", "Movimientos"], ["conteos", "Conteos"], ["difs", "Diferencias"], ["trim", "Trimestral"], ["caso", "Caso TP6"],
+  ["disp", "Disponibilidad"], ["movs", "Movimientos"], ["conteos", "Conteos"], ["difs", "Diferencias"], ["trim", "Trimestral"], ["caso", "Conteo 14/10"],
 ];
 const TIPOS = ["Ingreso_Orden_Compra", "Salida_Venta", "Retorno_Venta", "Ajuste_Inventario_Ciclico", "Ajuste_Inventario_Anual", "Consumo_Orden_Producción"];
 
@@ -68,7 +68,7 @@ async function movs(c) {
 async function conteos(c) {
   const filas = await leer("v_conteos", (q) => q.order("id", { ascending: false }).limit(2000));
   c.innerHTML = `<div class="panel">${cab("Registros de conteo (todas las lecturas)")}
-    <p class="small muted">Incluye primeras lecturas y recuentos: ningún registro se borra. Los REF### son el conteo de referencia de la consigna.</p>
+    <p class="small muted">Incluye primeras lecturas y recuentos: ningún registro se borra. Los REF### son las lecturas del conteo histórico de referencia.</p>
     ${tabla([{ t: "ID", html: (x) => `<span class="mono small">${esc(x.id_publico)}</span>` }, { t: "Jornada", k: "jornada" },
       { t: "Posición", html: (x) => esc(x.posicion || "sin posición") }, { t: "Lectura", num: true, html: (x) => x.lectura },
       { t: "Encontrado", html: (x) => x.posicion_vacia ? "Posición vacía" : `${esc(x.producto)} / ${esc(x.lote)}` },
@@ -173,17 +173,17 @@ async function caso(c) {
   const ctrl = [["Stock inicial al 30/09/2026", r.stock_inicial, 1011], ["Movimientos 01/10–14/10", r.movimientos, 40], ["Variación neta", r.variacion_neta, 583],
     ["Stock teórico al 14/10/2026", r.stock_teorico, 1594], ["Stock físico de referencia", r.stock_fisico, 1569], ["Diferencia neta", r.diferencia_neta, -25],
     ["Diferencias individuales", r.diferencias_individuales, 11]];
-  c.innerHTML = `<div class="panel">${cab("Caso TP6 · reconstrucción al 14/10/2026", `<a class="btn chico" href="#/conciliacion">Revisar y ajustar</a>`)}
+  c.innerHTML = `<div class="panel">${cab("Reconstrucción del conteo al 14/10/2026", `<a class="btn chico" href="#/conciliacion">Revisar y ajustar</a>`)}
     <p class="small muted">Calculado en el servidor desde las tablas importadas (stock inicial + 40 movimientos históricos con fecha ≤ corte ${fechaHora(r.fecha_corte)}), comparado con el conteo de referencia por posición + producto + lote. Las operaciones posteriores de la app no alteran este resultado.</p>
     ${tabla([{ t: "Control", k: 0, html: (x) => esc(x[0]) }, { t: "Calculado", num: true, html: (x) => `<b>${num(x[1])}</b>` },
-      { t: "Control del enunciado", num: true, html: (x) => num(x[2]) }, { t: "", html: (x) => x[1] === x[2] ? `<span class="chip ok">Coincide</span>` : `<span class="chip error">Revisar</span>` }], ctrl)}
+      { t: "Valor de control", num: true, html: (x) => num(x[2]) }, { t: "", html: (x) => x[1] === x[2] ? `<span class="chip ok">Coincide</span>` : `<span class="chip error">Revisar</span>` }], ctrl)}
     <h3 style="margin-top:18px">Detalle por posición + producto + lote</h3>
     ${tabla([{ t: "Posición", html: (f) => esc(f.posicion || "sin posición") }, { t: "Código", k: "producto" }, { t: "Lote", k: "lote" },
       { t: "Teórico", num: true, html: (f) => num(f.teorico) }, { t: "Físico", num: true, html: (f) => num(f.fisico) },
       { t: "Diferencia", num: true, html: (f) => `<span class="${claseSigno(f.diferencia)}">${signo(f.diferencia)}</span>` },
       { t: "Categoría", html: (f) => `${chip(CATEGORIAS, f.categoria)}${f.nota ? `<div class="nota">${esc(f.nota)}</div>` : ""}` }], filas,
       { claseFila: (f) => (f.producto === "PROD003" && f.lote === "L0009" && f.diferencia !== 0 ? "resaltar" : "") })}</div>`;
-  c.querySelector("#csv").addEventListener("click", () => descargarCSV("caso_tp6_conciliacion.csv", filas, [
+  c.querySelector("#csv").addEventListener("click", () => descargarCSV("conciliacion_14-10-2026.csv", filas, [
     { k: "posicion", t: "Posicion" }, { k: "producto", t: "Codigo" }, { k: "descripcion", t: "Descripcion" }, { k: "lote", t: "Lote" },
     { k: "teorico", t: "StockTeorico" }, { k: "fisico", t: "ConteoReferencia" }, { k: "diferencia", t: "Diferencia" }, { k: "categoria", t: "Categoria" }, { k: "nota", t: "Nota" }]));
 }

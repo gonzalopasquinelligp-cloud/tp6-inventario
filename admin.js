@@ -1,4 +1,4 @@
-// Administración: usuarios y roles, productos, posiciones, QR y reloj de simulación.
+// Administración: usuarios y roles, productos, posiciones, QR y fecha operativa.
 import { rpc, leer, estado, cargarMaestros } from "./api.js";
 import { esc, aviso, ICON, fechaHora, tabla, pedir, toast } from "./ui.js";
 
@@ -32,8 +32,8 @@ export async function render(el) {
       <div class="flex">${estado.posiciones.map((p) => `<label class="check" style="min-width:74px"><input type="checkbox" data-pos="${esc(p.codigo)}" ${p.activa ? "checked" : ""}> ${esc(p.codigo)}</label>`).join("")}</div>
       <div class="ayuda">Desmarcar = desactivar (solo si la posición no tiene stock).</div>
     </div>
-    <div class="panel"><h2>Fecha operativa (simulación)</h2>
-      <p class="small">El caso ocurre entre el 30/09 y el 14/10/2026. Para que las operaciones nuevas queden <b>después</b> del corte del caso, la fecha contable = hora real + desfase.
+    <div class="panel"><h2>Fecha operativa</h2>
+      <p class="small">La fecha contable de cada operación es la hora real más este desfase. Con desfase 0 la app usa la fecha real; el desfase solo se usa para cargar operaciones en una fecha posterior a la real.
       Desfase actual: <span class="mono">${esc(desf)}</span> · fecha contable ahora: <b>${fechaHora(new Date(Date.now() + estado.relojOffsetMs))}</b>. La hora real de registro se guarda siempre aparte.</p>
       <button class="btn chico" id="desfase">Cambiar desfase</button></div>
     <div class="panel"><h2>Auditoría reciente</h2>

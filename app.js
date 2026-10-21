@@ -2,6 +2,9 @@
 import { sb, configurado, estado, cargarPerfil, cargarMaestros, puede, ahoraContable } from "./api.js";
 import { esc, aviso, ICON, fechaHora, modal } from "./ui.js";
 
+// Nombre visible de la app. Se puede cambiar en config.js con: marca: { nombre: "…", subtitulo: "…", sigla: "…" }
+const MARCA = { nombre: "Inventario", subtitulo: "Gestión de depósito", sigla: "IN", ...(window.TP6_CONFIG?.marca || {}) };
+
 const RUTAS = [
   { id: "inicio", t: "Inicio", icon: "inicio", rol: "operario", mod: () => import("./inicio.js") },
   { id: "consulta", t: "Consultar stock", icon: "buscar", rol: "operario", mod: () => import("./consulta.js") },
@@ -11,6 +14,7 @@ const RUTAS = [
   { id: "conteo", t: "Conteo cíclico", icon: "conteo", rol: "operario", mod: () => import("./conteo.js") },
   { id: "conciliacion", t: "Conciliación", icon: "conciliar", rol: "operario", mod: () => import("./conciliacion.js"), grupo: "Control" },
   { id: "informes", t: "Informes", icon: "informe", rol: "operario", mod: () => import("./informes.js") },
+  { id: "costos", t: "Costo y servicio", icon: "costo", rol: "supervisor", mod: () => import("./costos.js") },
   { id: "sync", t: "Google Sheets", icon: "sync", rol: "operario", mod: () => import("./sync.js") },
   { id: "admin", t: "Administración", icon: "admin", rol: "administrador", mod: () => import("./admin.js"), grupo: "Sistema" },
 ];
@@ -30,7 +34,7 @@ function marco() {
   raiz.innerHTML = `
     <div class="app">
       <aside class="lateral">
-        <div class="marca"><div class="marca-icono">TP6</div><div><b>Inventario</b><span>Conteo cíclico · UTN FRH</span></div></div>
+        <div class="marca"><div class="marca-icono">${esc(MARCA.sigla)}</div><div><b>${esc(MARCA.nombre)}</b><span>${esc(MARCA.subtitulo)}</span></div></div>
         <nav class="nav">${visibles.map((r) => `${r.grupo ? `<div class="grupo">${r.grupo}</div>` : ""}
           <a href="#/${r.id}" data-ruta="${r.id}">${ICON[r.icon]}<span>${r.t}</span></a>`).join("")}
           <div class="grupo">Sesión</div>
@@ -59,7 +63,7 @@ function marco() {
   });
   const reloj = () => {
     const el = document.getElementById("reloj");
-    if (el) el.textContent = `Fecha operativa: ${fechaHora(ahoraContable())}${Math.abs(estado.relojOffsetMs) > 60000 ? " (período de simulación)" : ""} · hora Argentina`;
+    if (el) el.textContent = `Fecha operativa: ${fechaHora(ahoraContable())}${Math.abs(estado.relojOffsetMs) > 60000 ? " (con desfase)" : ""} · hora Argentina`;
   };
   reloj(); setInterval(reloj, 30000);
 }
@@ -70,10 +74,13 @@ async function navegar() {
   if (!puede(ruta.rol)) ruta = RUTAS[0];
   document.querySelectorAll("[data-ruta]").forEach((a) => a.classList.toggle("activo", a.dataset.ruta === ruta.id));
   document.getElementById("titulo").textContent = ruta.t;
-  document.title = `${ruta.t} · TP6 Inventario`;
-  const el = document.getElementById("vista");
+  document.title = `${ruta.t} · ${MARCA.nombre}`;
+  // Contenedor nuevo en cada navegación: si una pantalla anterior termina de cargar tarde, no pisa a la actual.
+  const vista = document.getElementById("vista");
   try { vistaActual?.destruir?.(); } catch { /* sin acción */ }
+  const el = document.createElement("div");
   el.innerHTML = `<div class="cargando">Cargando…</div>`;
+  vista.replaceChildren(el);
   try {
     vistaActual = await ruta.mod();
     await vistaActual.render(el, { ruta: ruta.id, params });
@@ -93,7 +100,7 @@ async function salir(e) {
 function pantallaLogin(msg = "") {
   raiz.innerHTML = `
     <div class="login"><div class="panel">
-      <div class="marca" style="padding-left:0"><div class="marca-icono">TP6</div><div><b>Inventario · Conteo cíclico</b><span>Planificación y Control de la Producción · UTN FRH</span></div></div>
+      <div class="marca" style="padding-left:0"><div class="marca-icono">${esc(MARCA.sigla)}</div><div><b>${esc(MARCA.nombre)}</b><span>${esc(MARCA.subtitulo)}</span></div></div>
       <div id="msg">${msg}</div>
       <form id="f-login">
         <div class="campo"><label for="email">Correo electrónico</label><input id="email" type="email" autocomplete="username" required></div>

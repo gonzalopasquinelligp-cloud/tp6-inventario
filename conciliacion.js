@@ -9,7 +9,7 @@ export async function render(el, { params }) {
   el.innerHTML = `<div class="panel"><h2>Elegí una jornada</h2>
     ${tabla([
       { t: "Jornada", html: (j) => `<a href="#/conciliacion/${j.id}"><b>${esc(j.codigo)}</b></a>` },
-      { t: "Tipo", html: (j) => j.tipo === "CICLICA" ? "Cíclica" : "Caso TP6 · referencia de la consigna" },
+      { t: "Tipo", html: (j) => j.tipo === "CICLICA" ? "Cíclica" : "Conteo histórico de referencia" },
       { t: "Corte", html: (j) => fechaHora(j.fecha_corte) },
       { t: "Estado", html: (j) => chip(ESTADOS_JORNADA, j.estado) },
       { t: "Diferencias", num: true, html: (j) => num(j.diferencias) },
@@ -39,7 +39,7 @@ async function detalle(el, id) {
 
   el.innerHTML = `
     <div class="panel"><div class="panel-cab"><div><h2>${esc(j.codigo)} ${chip(ESTADOS_JORNADA, j.estado)}</h2>
-      <div class="small muted">${esCaso ? "Caso TP6 · conteo físico de referencia de la consigna" : "Jornada cíclica"} · Corte <b>${fechaHora(j.fecha_corte)}</b> (hora Argentina) · Responsable ${esc(j.responsable_nombre)}</div></div>
+      <div class="small muted">${esCaso ? "Conteo histórico de referencia" : "Jornada cíclica"} · Corte <b>${fechaHora(j.fecha_corte)}</b> (hora Argentina) · Responsable ${esc(j.responsable_nombre)}</div></div>
       <div class="btns"><button class="btn chico" id="csv">${ICON.csv} CSV</button><button class="btn chico" onclick="window.print()">Imprimir</button>
       <a class="btn chico" href="#/conciliacion">Otras jornadas</a></div></div>
       ${enVivo ? aviso("alerta", "<b>Vista preliminar:</b> la jornada sigue abierta. Las diferencias se guardan para revisión al finalizar el conteo.") : ""}

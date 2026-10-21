@@ -14,6 +14,23 @@ export const hora = (v) => (v ? fHora.format(new Date(v)) : "—");
 export const num = (v) => (v === null || v === undefined || v === "" ? "—" : fNum.format(v));
 export const signo = (v) => (v === null || v === undefined ? "—" : (v > 0 ? "+" : "") + fNum.format(v));
 export const claseSigno = (v) => (v > 0 ? "pos" : v < 0 ? "neg" : "");
+const fUSD = new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fDec = (d) => new Intl.NumberFormat("es-AR", { maximumFractionDigits: d });
+export const usd = (v) => (v === null || v === undefined || Number.isNaN(v) ? "—" : `USD\u00a0${fUSD.format(v)}`);
+export const dec = (v, d = 2) => (v === null || v === undefined || Number.isNaN(v) ? "—" : fDec(d).format(v));
+export const pct = (v, d = 1) => (v === null || v === undefined || Number.isNaN(v) ? "—" : `${fDec(d).format(v * 100)}\u00a0%`);
+
+// Origen de un dato: se muestra siempre junto al valor.
+export const ORIGENES = {
+  real: ["Dato real", "Surge de los movimientos y conteos registrados."],
+  usuario: ["Cargado por usuario", "Valor informado por la empresa."],
+  supuesto: ["Supuesto", "Valor propuesto a falta de dato. Editable."],
+  faltante: ["Faltante", "No hay dato: el cálculo que lo necesita no se hace o se indica la limitación."],
+};
+export const origen = (o, extra = "") => {
+  const [t, d] = ORIGENES[o] || [o, ""];
+  return `<span class="org org-${esc(o)}" title="${esc(extra || d)}">${esc(t)}</span>`;
+};
 
 export function nuevoId() {
   if (window.crypto?.randomUUID) return crypto.randomUUID();
@@ -53,7 +70,7 @@ export function pedir({ titulo, texto = "", campos = [], confirmar = "Confirmar"
     const html = `<h2>${esc(titulo)}</h2>${texto ? `<p class="muted">${texto}</p>` : ""}
       <form>${campos.map((c) => `<div class="campo"><label for="m_${c.id}">${esc(c.etiqueta)}</label>
         ${c.tipo === "select"
-          ? `<select id="m_${c.id}" name="${c.id}">${c.opciones.map((o) => `<option value="${esc(o.v)}">${esc(o.t)}</option>`).join("")}</select>`
+          ? `<select id="m_${c.id}" name="${c.id}">${c.opciones.map((o) => `<option value="${esc(o.v)}" ${String(c.valor ?? "") === String(o.v) ? "selected" : ""}>${esc(o.t)}</option>`).join("")}</select>`
           : c.tipo === "textarea"
             ? `<textarea id="m_${c.id}" name="${c.id}" ${c.requerido ? "required" : ""} placeholder="${esc(c.placeholder || "")}">${esc(c.valor || "")}</textarea>`
             : `<input id="m_${c.id}" name="${c.id}" type="${c.tipo || "text"}" value="${esc(c.valor || "")}" ${c.requerido ? "required" : ""} placeholder="${esc(c.placeholder || "")}">`}
@@ -138,4 +155,5 @@ export const ICON = {
   salir: P('<path d="M9 21H5V3h4"/><path d="M16 17l5-5-5-5M21 12H9"/>'),
   csv: P('<path d="M14 3H6v18h12V7z"/><path d="M14 3v4h4M9 13h6M9 17h6"/>'),
   mas: P('<path d="M12 5v14M5 12h14"/>'),
+  costo: P('<path d="M4 19h16"/><path d="M6 15l4-5 3 3 5-7"/><circle cx="18" cy="6" r="1.5"/>'),
 };

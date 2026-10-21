@@ -3,13 +3,14 @@ import { rpc, estado, producto } from "./api.js";
 import { esc, num, aviso, ICON, nuevoId, fechaHora, toast } from "./ui.js";
 import { escanear } from "./escaner.js";
 import { seguirSync } from "./componentes.js";
+import { MOTIVOS } from "./modelo.js";
 
 const CONF = {
   ingreso: { rpc: "registrar_ingreso", titulo: "Ingreso de mercadería", doc: "Orden de compra / documento", docPh: "Ej.: OC-2026-0154",
              verbo: "Registrar ingreso", suma: true },
   egreso: { rpc: "registrar_egreso", titulo: "Egreso por venta", doc: "Número de pedido o comprobante", docPh: "Ej.: PED-10234",
             verbo: "Registrar egreso", suma: false },
-  retorno: { rpc: "registrar_retorno", titulo: "Retorno de venta", doc: "Comprobante de devolución", docPh: "Ej.: NC-0045",
+  retorno: { rpc: "registrar_retorno_motivo", titulo: "Retorno de venta", doc: "Comprobante de devolución", docPh: "Ej.: NC-0045",
              verbo: "Registrar retorno", suma: true },
 };
 
@@ -77,6 +78,11 @@ export async function render(el, { ruta, params }) {
         <input id="cant" class="grande" type="number" inputmode="numeric" min="1" step="1" ${ruta === "egreso" ? `max="${cont.cantidad}"` : ""} required>
         ${ruta === "egreso" ? `<div class="ayuda">Disponible en ${esc(s.pos)}: <b>${num(cont.cantidad)}</b> un.</div>` : ""}</div>
       <div class="campo"><label for="doc">${esc(c.doc)}</label><input id="doc" type="text" required maxlength="40" placeholder="${esc(c.docPh)}"></div>
+      ${ruta === "retorno" ? `<div class="campo"><label for="motivo">Motivo del retorno</label>
+        <select id="motivo" required><option value="">Elegí el motivo…</option>
+          ${Object.entries(MOTIVOS).map(([k, t]) => `<option value="${k}">${esc(t)}</option>`).join("")}</select>
+        <div class="ayuda">Se usa para calcular el costo de las devoluciones.</div></div>
+        <div class="campo oculto" id="campo-motivo-obs"><label for="motivo-obs">Describí el motivo</label><input id="motivo-obs" type="text" maxlength="200"></div>` : ""}
       <div class="campo"><label for="obs">Observación (opcional)</label><input id="obs" type="text" maxlength="200"></div>
       <div id="err"></div>
       <button class="btn prim grande" type="submit">${esc(c.verbo)}</button>
@@ -88,6 +94,7 @@ export async function render(el, { ruta, params }) {
       const p = estado.productos.find((x) => x.codigo === r.texto || x.codigo_barras === r.texto);
       if (p) f.querySelector("#prod").value = p.codigo; else toast(`Código «${r.texto}» no corresponde a un producto`);
     });
+    f.querySelector("#motivo")?.addEventListener("change", (e) => f.querySelector("#campo-motivo-obs").classList.toggle("oculto", e.target.value !== "otro"));
     f.addEventListener("submit", (e) => { e.preventDefault(); validarYConfirmar(f, cont); });
     f.querySelector(fijo ? "#cant" : "#prod").focus();
   }
@@ -99,12 +106,16 @@ export async function render(el, { ruta, params }) {
     const cant = Number(f.querySelector("#cant").value);
     const doc = f.querySelector("#doc").value.trim();
     const obs = f.querySelector("#obs").value.trim();
+    const motivo = f.querySelector("#motivo")?.value || null;
+    const motivoObs = f.querySelector("#motivo-obs")?.value.trim() || "";
     const errores = [];
     if (!prod) errores.push("Elegí el producto.");
     if (!/^[A-Z0-9-]{1,20}$/.test(lote)) errores.push("Lote vacío o inválido (letras, números o guiones).");
     if (!Number.isInteger(cant) || cant <= 0) errores.push("La cantidad debe ser un número entero mayor que cero.");
     if (ruta === "egreso" && cant > cont.cantidad) errores.push(`No podés egresar ${cant}: el disponible en ${s.pos} es ${cont.cantidad}.`);
     if (!doc) errores.push(`Completá: ${c.doc}.`);
+    if (ruta === "retorno" && !motivo) errores.push("Elegí el motivo del retorno.");
+    if (ruta === "retorno" && motivo === "otro" && !motivoObs) errores.push("Describí el motivo del retorno.");
     if (errores.length) { err.innerHTML = aviso("error", errores.join("<br>")); return; }
     err.innerHTML = "";
     const pr = producto(prod);
@@ -115,13 +126,14 @@ export async function render(el, { ruta, params }) {
       <dt>Operación</dt><dd>${esc(c.titulo)}</dd><dt>Posición</dt><dd>${esc(s.pos)}</dd>
       <dt>Producto</dt><dd>${esc(prod)} · ${esc(pr?.descripcion || "")}</dd><dt>Lote</dt><dd>${esc(lote)}</dd>
       <dt>Cantidad</dt><dd>${c.suma ? "+" : "−"}${num(cant)} un.</dd><dt>Documento</dt><dd>${esc(doc)}</dd>
+      ${motivo ? `<dt>Motivo</dt><dd>${esc(MOTIVOS[motivo])}${motivoObs ? ` · ${esc(motivoObs)}` : ""}</dd>` : ""}
       <dt>Saldo estimado</dt><dd>${num(cont?.cantidad || 0)} → ${num(nuevo)} un.</dd></div>
       <div id="envio"></div>
       <div class="btns"><button class="btn ok grande" id="confirmar">Confirmar y guardar</button><button class="btn" id="corregir">Corregir</button></div>`;
     elRes.querySelector("#corregir").addEventListener("click", () => {
       elRes.innerHTML = ""; el.querySelector("#p3").classList.remove("actual"); el.querySelector("#p2").classList.replace("hecho", "actual");
     });
-    elRes.querySelector("#confirmar").addEventListener("click", (e) => enviar(e.currentTarget, { prod, lote, cant, doc, obs }));
+    elRes.querySelector("#confirmar").addEventListener("click", (e) => enviar(e.currentTarget, { prod, lote, cant, doc, obs, motivo, motivoObs }));
   }
 
   async function enviar(boton, d) {
@@ -129,7 +141,8 @@ export async function render(el, { ruta, params }) {
     boton.disabled = true; boton.textContent = "Guardando…";
     try {
       const r = await rpc(c.rpc, { p_client_id: s.clientId, p_posicion: s.pos, p_producto: d.prod, p_lote: d.lote,
-                                   p_cantidad: d.cant, p_documento: d.doc, p_observacion: d.obs || null });
+                                   p_cantidad: d.cant, p_documento: d.doc, p_observacion: d.obs || null,
+                                   ...(ruta === "retorno" ? { p_motivo: d.motivo, p_motivo_obs: d.motivoObs || null } : {}) });
       el.querySelector("#p3").classList.replace("actual", "hecho");
       elRes.innerHTML = aviso("ok", `<b>Operación guardada${r.repetido ? " (ya estaba registrada; no se duplicó)" : ""}.</b><br>
           ID <span class="mono">${esc(r.id)}</span> · ${esc(r.tipo)} · ${esc(r.posicion)} · ${esc(r.producto)}/${esc(r.lote)} · ${r.cantidad > 0 ? "+" : ""}${num(r.cantidad)} un.<br>

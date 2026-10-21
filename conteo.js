@@ -29,7 +29,7 @@ async function lista(el) {
     <div class="panel"><h2>Historial de jornadas</h2>
       ${tabla([
         { t: "Jornada", html: (j) => `<a href="#/conciliacion/${j.id}">${esc(j.codigo)}</a>` },
-        { t: "Tipo", html: (j) => j.tipo === "CICLICA" ? "Cíclica" : "Caso TP6 (referencia)" },
+        { t: "Tipo", html: (j) => j.tipo === "CICLICA" ? "Cíclica" : "Histórico (referencia)" },
         { t: "Corte", html: (j) => fechaHora(j.fecha_corte) },
         { t: "Estado", html: (j) => chip(ESTADOS_JORNADA, j.estado) },
         { t: "Posiciones", num: true, html: (j) => j.tipo === "CICLICA" ? `${j.posiciones_contadas}/${j.total_posiciones}` : j.total_posiciones },
