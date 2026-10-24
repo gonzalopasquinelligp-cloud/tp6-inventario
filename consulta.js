@@ -1,7 +1,7 @@
-import { leer, estado } from "./api.js?v=202610241559";
-import { esc, num, signo, claseSigno, fechaHora, fecha, ICON, tabla, descargarCSV, aviso } from "./ui.js?v=202610241559";
-import { escanear } from "./escaner.js?v=202610241559";
-import { rackHTML } from "./componentes.js?v=202610241559";
+import { leer, estado } from "./api.js?v=202610242324";
+import { esc, num, signo, claseSigno, fechaHora, fecha, ICON, tabla, descargarCSV, aviso } from "./ui.js?v=202610242324";
+import { escanear } from "./escaner.js?v=202610242324";
+import { rackHTML } from "./componentes.js?v=202610242324";
 
 let datos = [], posEstado = [];
 

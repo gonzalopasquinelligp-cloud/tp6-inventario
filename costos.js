@@ -1,8 +1,8 @@
 // Costo y servicio: tablero para decidir si se puede bajar el costo del inventario sin perder nivel de servicio.
 // Los datos vienen del servidor (analisis_datos); los cálculos están en modelo.js con sus fórmulas a la vista.
-import { rpc, puede, leer } from "./api.js?v=202610241559";
-import { esc, num, aviso, ICON, tabla, pedir, toast, descargarCSV, usd, dec, pct, origen, fechaHora, TZ } from "./ui.js?v=202610241559";
-import { analizar, zDeNS, CATEGORIAS, MOTIVOS } from "./modelo.js?v=202610241559";
+import { rpc, puede, leer } from "./api.js?v=202610242324";
+import { esc, num, aviso, ICON, tabla, pedir, toast, descargarCSV, usd, dec, pct, origen, fechaHora, TZ } from "./ui.js?v=202610242324";
+import { analizar, zDeNS, CATEGORIAS, MOTIVOS } from "./modelo.js?v=202610242324";
 
 const fCorta = (iso) => { const [, m, d] = iso.split("-"); return `${d}/${m}`; };
 const fLarga = (iso) => iso.split("-").reverse().join("/");
@@ -182,18 +182,15 @@ function pintarRespuesta(res) {
     const p = a ? ` (${d > 0 ? "+" : "−"}${dec(Math.abs(d / a) * 100, 0)}\u00a0%)` : "";
     return `<span class="fig-delta ${(d < 0) === mejorMenor ? "mejor" : "peor"}">${d > 0 ? "+" : "−"}${fmt(Math.abs(d))}${p}</span>`;
   };
-  const figura = (serie, etiqueta, valor, hoy, dlt, formula) => `<div class="fig" tabindex="0" title="${esc(formula)}">
+  const formulas = [];
+  const figura = (serie, etiqueta, valor, hoy, dlt, formula) => { formulas.push([etiqueta, formula]); return `<div class="fig" tabindex="0" title="${esc(formula)}">
       <div class="fig-t">${etiqueta}</div>
       <div class="fig-v">${valor}</div>
       <div class="fig-c">Hoy ${hoy} ${dlt}</div>
-      <div class="fig-f">${esc(formula)}</div></div>`;
-  // Las conclusiones que más ayudan a decidir: qué explica la diferencia, qué pasa con el stock,
-  // si depende del supuesto de costo por orden y cuánto margen hay ante más ventas.
-  const d = c.detalle, porque = [...new Set([d[0], d[1], d[2], d[d.length - 1]].filter(Boolean))];
-  const m = res.nsMinimoCompleto, pc = res.porClase;
-  if (pc.disponible && !pc.activo) porque.push(`Con nivel de servicio por clase ABC (A ${dec(pc.niveles.A.valor, 1)} %, B ${dec(pc.niveles.B.valor, 1)} %, C ${dec(pc.niveles.C.valor, 1)} %) la propuesta costaría ${usd(pc.costo)}, con OTIF ${pct(pc.otif)} y ${num(pc.falta)} unidades sin entregar.`);
-  porque.push(m ? `El nivel de servicio más bajo que entrega el 100 % en la simulación es ${dec(m.ns, 1)} %, con un costo de ${usd(m.costoPropuesta)}, pero solo aguanta subas de ventas de hasta +${m.margen.hasta ?? 0} %. Ver «Nivel de servicio».`
-    : "Ningún nivel de servicio hasta 99,9 % entrega el 100 % en la simulación. Ver «Nivel de servicio».");
+      </div>`; };
+  // Las tres conclusiones que más ayudan a decidir: qué explica la diferencia, qué pasa con el stock
+  // y si depende del supuesto de costo por orden. El resto queda en «Límites del resultado».
+  const d = c.detalle, porque = [d[0], d[1], d[2]].filter(Boolean);
   estadoVista.el.querySelector("#respuesta").innerHTML = `
     <p class="resp-pregunta">¿Se puede bajar el costo del inventario sin dejar de entregar?</p>
     <div class="ver-frase tono-${c.tono}">
@@ -211,6 +208,7 @@ function pintarRespuesta(res) {
       ${figura("prop", "Aguanta subas de ventas de hasta", margenTxt(mg.propuesta), margenTxt(mg.actual), "",
         `Mayor aumento de ventas, de 5 en 5 %, sin unidades faltantes, con la política calculada hoy (sin recalcularla).${mg.propuesta.falla !== null ? ` Con +${mg.propuesta.falla} % la propuesta deja ${num(mg.propuesta.falta)} un. sin entregar.` : ""}${mg.actual.falla !== null ? ` Hoy falta mercadería desde +${mg.actual.falla} %.` : ""}`)}
     </div>
+    <details class="traza"><summary>Cómo se calcula cada número</summary><ul>${formulas.map(([t, f]) => `<li><b>${t}</b>: ${esc(f)}</li>`).join("")}</ul></details>
     <p class="resp-metas" id="resp-metas"></p>
     <div class="resp-pie">
       <div><h3>Por qué</h3><ul class="resp-porque">${porque.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>
@@ -391,7 +389,7 @@ function pintarGrafico(res) {
     <div class="leyenda-g" aria-hidden="true"><span><i class="sw sw-ventas"></i>Ventas</span><span><i class="sw-l sw-l-hoy"></i>Hoy</span><span><i class="sw-l sw-l-prop"></i>Propuesta</span>${faltas.length ? `<span><i class="sw-falta"></i>Día con faltante (propuesta)</span>` : ""}</div>
     <div class="graficos" id="graficos" tabindex="0" role="group" aria-label="Gráfico de ventas, entregas y costo por fecha. Usá las flechas para recorrer las fechas; los datos están también en la tabla de abajo.">${s}<div class="g-tip" id="g-tip" role="status" hidden></div></div>
     ${faltas.length ? `<p class="g-nota"><b>La propuesta no alcanza a entregar todo</b> en ${faltas.map((p) => p.dias === 1 ? fCorta(p.desde) : `${fCorta(p.desde)}–${fCorta(p.hasta)}`).join(", ")}: ${num(res.tot.faltaPropuesta)} un. sin entregar en el período.</p>` : ""}
-    <p class="g-nota">Hoy: stock y recepciones registrados. Propuesta: stock de seguridad + lote, con su costo en régimen repartido por igual en cada día. Entregas simuladas: cada retiro por venta es un pedido del mismo día.</p>
+    <details class="traza"><summary>Cómo se calcula</summary><ul><li><b>Hoy</b>: stock y recepciones registrados.</li><li><b>Propuesta</b>: stock de seguridad + lote; su costo en régimen se reparte por igual en cada día.</li><li><b>Entregas</b>: cada salida por venta es un pedido del mismo día.</li></ul></details>
     <details class="traza"><summary>Ver los datos del gráfico en una tabla</summary>${tabla([
       { t: "Fecha", html: (p) => (p.dias === 1 ? fLarga(p.desde) : `${fLarga(p.desde)} – ${fLarga(p.hasta)}`) },
       { t: "Ventas, un.", num: true, html: (p) => dec(p.ventas, 0) },
@@ -470,7 +468,7 @@ function pintarServicio(res) {
       { t: "Stock de seguridad, un.", num: true, html: (c) => `<span title="Suma de SS = z × σ × √plazo de los productos con ventas">${num(c.ssTotal)}</span>` },
       { t: "Máximo, un.", num: true, html: (c) => `<span title="Suma de SS + Q de los productos con ventas">${num(c.maxTotal)}</span>` },
     ], filasServ, { claseFila: (c) => (enUso(c) ? "fila-actual" : "") })}
-    <p class="g-nota">100 % no se puede calcular: z sería infinito. La meta de entregar todo se controla con el OTIF simulado.</p>`;
+    <p class="g-nota">100 % no se calcula: z sería infinito.</p>`;
   b.querySelectorAll("[data-ns]").forEach((btn) => btn.addEventListener("click", () => {
     const el = estadoVista.el;
     if (btn.dataset.ns === "clase") { estadoVista.porClase = true; el.querySelector("#s-modo").value = "clase"; pintar(); }
@@ -488,10 +486,10 @@ function pintarCategorias(res) {
   const max = Math.max(...cats.map((k) => Math.max(t.actual[k.id], t.propuesta[k.id])), 1);
   const barra = (v, cl) => `<div class="cb-fila"><div class="cb-pista"><div class="cb-barra ${cl}" style="width:${(v / max) * 100}%"></div></div><span class="cb-val">${usd0(v)}</span></div>`;
   estadoVista.el.querySelector("#b-categorias").innerHTML = `<div class="bloque-cab"><h2>En qué se va el costo</h2>
-      <p class="bloque-sub">Total del período por tipo de costo.</p></div>
+</div>
     <div class="leyenda-g"><span><i class="sw sw-hoy"></i>Hoy</span><span><i class="sw sw-prop"></i>Propuesta</span></div>
     <div class="cb">${cats.map((k) => `<div class="cb-item"><div class="cb-nombre">${esc(k.t)}</div>${barra(t.actual[k.id], "hoy")}${barra(t.propuesta[k.id], "prop")}</div>`).join("")}</div>
-    <p class="small muted">Manipulación, obsolescencia, scrap y retrabajo no suman costo hoy; el quiebre no se monetiza (falta el dato). Ver «Costo por producto».</p>`;
+    <p class="small muted">Sin costo en el período: manipulación, obsolescencia y quiebre (falta el dato).</p>`;
 }
 
 // ---------------------------------------------------------------------
@@ -657,7 +655,7 @@ function pintarCostos(res) {
 function pintarSensibilidad(res) {
   const b = estadoVista.el.querySelector("#b-sensib");
   b.innerHTML = `<div class="bloque-cab"><h2>Si las ventas aumentan</h2>
-      <p class="bloque-sub">Misma historia con cada retiro multiplicado por la variación. La política propuesta se recalcula con la demanda nueva; la actual repite sus recepciones registradas. Nivel de servicio ${nsTxt(res)}.</p></div>
+      <p class="bloque-sub">La propuesta se recalcula para cada aumento; hoy repite sus compras. Nivel de servicio ${nsTxt(res)}.</p></div>
     ${tabla([
       { t: "Ventas", html: (s) => `<b>${s.variacion === 0 ? "Registradas" : `+${s.variacion} %`}</b>` },
       { t: "Costo actual", num: true, html: (s) => usd(s.costoActual) },
@@ -679,7 +677,7 @@ function pintarDevoluciones(res) {
   const editable = puede("supervisor");
   const b = estadoVista.el.querySelector("#b-devol");
   b.innerHTML = `<div class="bloque-cab"><h2>Devoluciones del período</h2>
-      <p class="bloque-sub">El motivo define el costo de cada devolución. Si no se cargó, se usa el supuesto «${esc(MOTIVOS.cancelacion_pago)}».</p></div>
+      <p class="bloque-sub">Sin motivo cargado se toma «${esc(MOTIVOS.cancelacion_pago)}».</p></div>
     ${tabla([
       { t: "Fecha", html: (r) => fLarga(r.fecha) },
       { t: "Movimiento", html: (r) => `<span class="mono small">${esc(r.id_publico)}</span><div class="nota">${esc(r.documento || "")}</div>` },
@@ -717,7 +715,7 @@ function pintarParametros(res) {
   for (const p of res.series.productos) for (const d of defsProd) conteo[P.leer(d.clave, p.codigo).origen]++;
   const b = estadoVista.el.querySelector("#b-param");
   b.innerHTML = `<div class="bloque-cab"><h2>Parámetros y supuestos</h2>
-      <p class="bloque-sub">${conteo.supuesto} supuestos · ${conteo.faltante} faltantes · ${conteo.usuario} cargados por usuario. ${admin ? "Tocá «Editar» para cambiar un valor; el cambio queda en la auditoría." : "Solo un administrador puede editarlos."}</p>
+      <p class="bloque-sub">${conteo.supuesto} supuestos · ${conteo.faltante} faltantes · ${conteo.usuario} cargados por usuario. ${admin ? "" : "Los edita un administrador."}</p>
       <div class="leyenda-org">${origen("real")} ${origen("usuario")} ${origen("supuesto")} ${origen("faltante")}</div></div>
     <div class="param-grupos">
     ${Object.entries(porCat).map(([cat, xs]) => `<div class="param-grupo"><h3>${esc(GRUPOS[cat] || cat)}</h3>
@@ -732,7 +730,7 @@ function pintarParametros(res) {
       ...defsProd.map((d) => ({ t: `${d.etiqueta}, ${d.unidad}`, html: (p) => { const x = P.leer(d.clave, p.codigo);
         return `<div class="celda-param o-${x.origen}" title="${esc(x.razon)}">${valor(x)} ${origen(x.origen, x.razon)}${admin ? `<button class="btn chico" data-p="${esc(d.clave)}" data-prod="${esc(p.codigo)}" aria-label="Editar ${esc(d.etiqueta)} de ${esc(p.codigo)}">Editar</button>` : ""}</div>`; } }))],
       res.series.productos)}
-    <p class="small muted">No hay montos en pesos en los datos cargados: todos los valores están en USD y no se usa tipo de cambio.</p>`;
+`;
   b.querySelectorAll("[data-p]").forEach((btn) => btn.addEventListener("click", () => editarParametro(btn.dataset.p, btn.dataset.prod)));
 }
 

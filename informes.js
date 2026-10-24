@@ -1,6 +1,6 @@
 // Informes: disponibilidad, historial de movimientos, conteos, diferencias, trimestral y conteo histórico del 14/10.
-import { rpc, leer, estado } from "./api.js?v=202610241559";
-import { esc, num, signo, claseSigno, aviso, ICON, fecha, fechaHora, tabla, chip, CATEGORIAS, ESTADOS_REV, descargarCSV, TZ } from "./ui.js?v=202610241559";
+import { rpc, leer, estado } from "./api.js?v=202610242324";
+import { esc, num, signo, claseSigno, aviso, ICON, fecha, fechaHora, tabla, chip, CATEGORIAS, ESTADOS_REV, descargarCSV, TZ } from "./ui.js?v=202610242324";
 
 const PESTANAS = [
   ["disp", "Disponibilidad"], ["movs", "Movimientos"], ["conteos", "Conteos"], ["difs", "Diferencias"], ["trim", "Trimestral"], ["caso", "Conteo 14/10"],
@@ -68,7 +68,7 @@ async function movs(c) {
 async function conteos(c) {
   const filas = await leer("v_conteos", (q) => q.order("id", { ascending: false }).limit(2000));
   c.innerHTML = `<div class="panel">${cab("Registros de conteo (todas las lecturas)")}
-    <p class="small muted">Incluye primeras lecturas y recuentos: ningún registro se borra. Los REF### son las lecturas del conteo histórico de referencia.</p>
+    <p class="small muted">Incluye recuentos. REF### = conteo de referencia del 14/10.</p>
     ${tabla([{ t: "ID", html: (x) => `<span class="mono small">${esc(x.id_publico)}</span>` }, { t: "Jornada", k: "jornada" },
       { t: "Posición", html: (x) => esc(x.posicion || "sin posición") }, { t: "Lectura", num: true, html: (x) => x.lectura },
       { t: "Encontrado", html: (x) => x.posicion_vacia ? "Posición vacía" : `${esc(x.producto)} / ${esc(x.lote)}` },
@@ -174,7 +174,7 @@ async function caso(c) {
     ["Stock teórico al 14/10/2026", r.stock_teorico, 1594], ["Stock físico de referencia", r.stock_fisico, 1569], ["Diferencia neta", r.diferencia_neta, -25],
     ["Diferencias individuales", r.diferencias_individuales, 11]];
   c.innerHTML = `<div class="panel">${cab("Reconstrucción del conteo al 14/10/2026", `<a class="btn chico" href="#/conciliacion">Revisar y ajustar</a>`)}
-    <p class="small muted">Calculado en el servidor desde las tablas importadas (stock inicial + 40 movimientos históricos con fecha ≤ corte ${fechaHora(r.fecha_corte)}), comparado con el conteo de referencia por posición + producto + lote. Las operaciones posteriores de la app no alteran este resultado.</p>
+    <p class="small muted">Stock inicial + movimientos hasta el corte (${fechaHora(r.fecha_corte)}), contra el conteo de referencia por posición, producto y lote.</p>
     ${tabla([{ t: "Control", k: 0, html: (x) => esc(x[0]) }, { t: "Calculado", num: true, html: (x) => `<b>${num(x[1])}</b>` },
       { t: "Valor de control", num: true, html: (x) => num(x[2]) }, { t: "", html: (x) => x[1] === x[2] ? `<span class="chip ok">Coincide</span>` : `<span class="chip error">Revisar</span>` }], ctrl)}
     <h3 style="margin-top:18px">Detalle por posición + producto + lote</h3>

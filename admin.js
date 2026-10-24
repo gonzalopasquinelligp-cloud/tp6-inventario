@@ -1,6 +1,6 @@
 // Administración: usuarios y roles, productos, posiciones, QR y fecha operativa.
-import { rpc, leer, estado, cargarMaestros } from "./api.js?v=202610241559";
-import { esc, aviso, ICON, fechaHora, tabla, pedir, toast } from "./ui.js?v=202610241559";
+import { rpc, leer, estado, cargarMaestros } from "./api.js?v=202610242324";
+import { esc, aviso, ICON, fechaHora, tabla, pedir, toast } from "./ui.js?v=202610242324";
 
 export async function render(el) {
   const [usuarios, cfg, audit] = await Promise.all([
@@ -12,8 +12,7 @@ export async function render(el) {
   el.innerHTML = `
     <div id="msg"></div>
     <div class="panel"><div class="panel-cab"><h2>Usuarios y roles</h2></div>
-      <p class="small muted">Las contraseñas las administra Supabase Auth (cifradas; nunca pasan por esta app ni por Google Sheets).
-      Alta de usuarios: el usuario se registra desde la pantalla de ingreso o se crea en Supabase › Authentication. Acá se activa y se asigna el rol.</p>
+      <p class="small muted">Cada persona crea su cuenta desde la pantalla de ingreso; acá se activa y se le asigna el rol. Las contraseñas no pasan por la app.</p>
       ${tabla([{ t: "Nombre", html: (u) => `<b>${esc(u.nombre)}</b>` }, { t: "Correo", html: (u) => `<span class="small">${esc(u.email)}</span>` },
         { t: "Rol", html: (u) => `<select data-rol="${u.id}" ${u.id === estado.perfil.id ? "disabled" : ""}>${["operario", "supervisor", "administrador"].map((r) => `<option ${r === u.rol ? "selected" : ""}>${r}</option>`).join("")}</select>` },
         { t: "Activo", html: (u) => `<label class="check"><input type="checkbox" data-act="${u.id}" ${u.activo ? "checked" : ""} ${u.id === estado.perfil.id ? "disabled" : ""}> ${u.activo ? "Sí" : "No"}</label>` },
@@ -33,7 +32,7 @@ export async function render(el) {
       <div class="ayuda">Desmarcar = desactivar (solo si la posición no tiene stock).</div>
     </div>
     <div class="panel"><h2>Fecha operativa</h2>
-      <p class="small">La fecha contable de cada operación es la hora real más este desfase. Con desfase 0 la app usa la fecha real; el desfase solo se usa para cargar operaciones en una fecha posterior a la real.
+      <p class="small">Con desfase 0 cada operación lleva la fecha real. Usalo solo para cargar operaciones con una fecha posterior.
       Desfase actual: <span class="mono">${esc(desf)}</span> · fecha contable ahora: <b>${fechaHora(new Date(Date.now() + estado.relojOffsetMs))}</b>. La hora real de registro se guarda siempre aparte.</p>
       <button class="btn chico" id="desfase">Cambiar desfase</button></div>
     <div class="panel"><h2>Auditoría reciente</h2>

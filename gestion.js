@@ -1,8 +1,8 @@
 // Tablero de gestión: valorización, rotación y clasificación ABC / XYZ del inventario.
 // Usa los mismos datos que «Costo y servicio» (analisis_datos); los cálculos están en modelo.js.
-import { rpc, leer } from "./api.js?v=202610241559";
-import { esc, num, aviso, ICON, tabla, descargarCSV, usd, dec, pct, origen, TZ } from "./ui.js?v=202610241559";
-import { clasificar } from "./modelo.js?v=202610241559";
+import { rpc, leer } from "./api.js?v=202610242324";
+import { esc, num, aviso, ICON, tabla, descargarCSV, usd, dec, pct, origen, TZ } from "./ui.js?v=202610242324";
+import { clasificar } from "./modelo.js?v=202610242324";
 
 const fLarga = (iso) => iso.split("-").reverse().join("/");
 const usd0 = (v) => (v === null || v === undefined ? "—" : `USD ${Math.round(v).toLocaleString("es-AR")}`);
@@ -71,7 +71,8 @@ function pintar(r, ex) {
   const maxCv = Math.max(...filas.map((x) => x.cv || 0), cortes.cY.valor * 1.2);
   const cuenta = (k, v) => filas.filter((x) => x[k] === v).length;
   const todosZ = filas.filter((x) => !x.sinVentas).every((x) => x.xyz === "Z");
-  const fig = (t, v, nota) => `<div class="fig" tabindex="0" title="${esc(nota)}"><div class="fig-t">${t}</div><div class="fig-v">${v}</div><div class="fig-f">${esc(nota)}</div></div>`;
+  const notas = [];
+  const fig = (t, v, nota) => { notas.push([t, nota]); return `<div class="fig" tabindex="0" title="${esc(nota)}"><div class="fig-t">${t}</div><div class="fig-v">${v}</div></div>`; };
   const supCosto = filas.some((x) => x.origenCosto.origen === "supuesto");
   const barra = (v, max, cl, txt) => `<div class="gb"><div class="gb-pista"><div class="gb-barra ${cl}" style="width:${Math.max(0, v) / max * 100}%" title="${esc(txt)}"></div></div></div>`;
   const marcas = (max) => [cortes.cX.valor, cortes.cY.valor].map((c) => `<i class="gb-corte" style="left:${c / max * 100}%" aria-hidden="true"></i>`).join("");
@@ -85,7 +86,9 @@ function pintar(r, ex) {
         ${fig("Días de inventario", tot.dias === null ? "—" : dec(tot.dias, 0), `Inventario promedio valorizado ÷ consumo valorizado por día = ${usd0(tot.valorProm)} ÷ (${usd0(tot.consumo)} ÷ ${L}).`)}
         ${fig("Exactitud del último conteo", ex ? pct(ex.valor) : "sin conteo", ex ? `${ex.jornada}: ${ex.ok} de ${ex.lineas} registros sin diferencia.` : "No hay conteos hasta el final del período.")}
       </div>
-      ${tot.sinVentas ? `<p class="g-nota"><b>${tot.sinVentas} producto${tot.sinVentas > 1 ? "s" : ""} sin ventas en el período</b> (${filas.filter((x) => x.sinVentas).map((x) => esc(x.codigo)).join(", ")}): ${usd0(filas.filter((x) => x.sinVentas).reduce((a, x) => a + (x.valorFin || 0), 0))} inmovilizados. Con ${L} días no alcanza para llamarlos «sin movimiento»: eso se mide en meses.</p>` : ""}
+      ${tot.sinVentas ? `<p class="g-nota"><b>${tot.sinVentas} producto${tot.sinVentas > 1 ? "s" : ""} sin ventas en el período</b> (${filas.filter((x) => x.sinVentas).map((x) => esc(x.codigo)).join(", ")}): ${usd0(filas.filter((x) => x.sinVentas).reduce((a, x) => a + (x.valorFin || 0), 0))} inmovilizados. </p>` : ""}
+      <details class="traza"><summary>Cómo se calcula cada número</summary><ul>${notas.map(([t, n]) => `<li><b>${t}</b>: ${esc(n)}</li>`).join("")}</ul>
+        <p>Rotación y días anualizan ${L} días: sirven para comparar productos, no como dato anual.</p></details>
     </section>
 
     <section class="bloque" id="g-abc">
@@ -118,7 +121,7 @@ function pintar(r, ex) {
     </section>
 
     <section class="bloque" id="g-matriz">
-      <div class="bloque-cab"><h2>Matriz ABC × XYZ</h2><p class="bloque-sub">Cada producto en su celda. Define cuánto control merece y cómo reponerlo.</p></div>
+      <div class="bloque-cab"><h2>Matriz ABC × XYZ</h2><p class="bloque-sub">Cuánto control merece cada producto y cómo reponerlo.</p></div>
       <div class="tabla-cont"><table class="matriz"><thead><tr><th></th>${["X", "Y", "Z"].map((k) => `<th scope="col"><span class="clase xyz-${k}">${k}</span></th>`).join("")}<th scope="col">Sin ventas</th></tr></thead>
         <tbody>${["A", "B", "C"].map((a) => `<tr><th scope="row"><span class="clase abc-${a}">${a}</span></th>${["X", "Y", "Z", null].map((k) => {
           const xs = filas.filter((x) => x.abc === a && x.xyz === k);
@@ -141,7 +144,6 @@ function pintar(r, ex) {
         { t: "Rotación, veces/año", num: true, html: (x) => (x.rotacion === null ? "—" : `<span title="(${usd0(x.consumo)} × 365 ÷ ${L}) ÷ ${usd0(x.valorProm)}">${dec(x.rotacion, 1)}</span>`) },
         { t: "Días de inventario", num: true, html: (x) => (x.dias === null ? "—" : `<span title="Stock promedio ÷ demanda diaria = ${dec(x.stockProm, 1)} ÷ ${dec(x.dbar, 2)}">${dec(x.dias, 0)}</span>`) },
       ], orden)}
-      <p class="g-nota">Rotación y días anualizan ${L} días: sirven para comparar productos, no como dato anual.</p>
     </section>`;
 
   vista.el.querySelector("#g-csv").addEventListener("click", () => descargarCSV(`gestion_inventario_${S.dias[0]}_${S.dias[L - 1]}.csv`, orden, [

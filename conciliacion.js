@@ -1,7 +1,7 @@
 // Conciliación por POSICIÓN + PRODUCTO + LOTE, revisión de diferencias, ajustes y cierre.
-import { rpc, leer, puede } from "./api.js?v=202610241559";
+import { rpc, leer, puede } from "./api.js?v=202610242324";
 import { esc, num, signo, claseSigno, aviso, ICON, nuevoId, fechaHora, tabla, chip, CATEGORIAS, ESTADOS_REV, ESTADOS_JORNADA,
-         pedir, descargarCSV, toast } from "./ui.js?v=202610241559";
+         pedir, descargarCSV, toast } from "./ui.js?v=202610242324";
 
 export async function render(el, { params }) {
   if (params[0] && /^\d+$/.test(params[0])) return detalle(el, Number(params[0]));
@@ -42,9 +42,8 @@ async function detalle(el, id) {
       <div class="small muted">${esCaso ? "Conteo histórico de referencia" : "Jornada cíclica"} · Corte <b>${fechaHora(j.fecha_corte)}</b> (hora Argentina) · Responsable ${esc(j.responsable_nombre)}</div></div>
       <div class="btns"><button class="btn chico" id="csv">${ICON.csv} CSV</button><button class="btn chico" onclick="window.print()">Imprimir</button>
       <a class="btn chico" href="#/conciliacion">Otras jornadas</a></div></div>
-      ${enVivo ? aviso("alerta", "<b>Vista preliminar:</b> la jornada sigue abierta. Las diferencias se guardan para revisión al finalizar el conteo.") : ""}
-      ${esCaso ? aviso("info", `Stock teórico = stock inicial al 30/09/2026 + movimientos del 01/10 al 14/10/2026 (fecha ≤ corte). Se compara con el conteo de referencia del 14/10/2026 por <b>posición + producto + lote</b>.
-         Las posiciones sin registro en la referencia se toman como físico 0 y se indica en la nota. Los dos registros sin posición se muestran aparte, sin asignarles ubicación.`) : ""}
+      ${enVivo ? aviso("alerta", "<b>Vista preliminar:</b> la jornada sigue abierta. Las diferencias se guardan al finalizar el conteo.") : ""}
+      ${esCaso ? aviso("info", `Teórico: stock al 30/09/2026 + movimientos hasta el corte. Posiciones sin registro en la referencia = físico 0. Los registros sin posición van aparte.`) : ""}
       ${j.posiciones_no_contadas?.length ? aviso("alerta", `<b>Cierre parcial del conteo.</b> No contadas: ${esc(j.posiciones_no_contadas.join(", "))}. Motivo: ${esc(j.motivo_cierre_parcial)}`) : ""}
       ${j.estado.startsWith("CERRADA") ? aviso("ok", `<b>Conciliación cerrada</b> el ${fechaHora(j.cerrada_en)} por ${esc(j.cerrada_por_email)}. Totales guardados: teórico ${num(j.teorico_total)} · físico ${num(j.fisico_total)} · diferencia ${signo(j.diferencia_neta)} · ${num(j.cantidad_diferencias)} diferencias.${j.comentario_cierre ? " " + esc(j.comentario_cierre) : ""}`) : ""}
       <div class="grilla g4">

@@ -1,8 +1,8 @@
 // Conteo cíclico: jornadas, captura por posición (QR o manual), recuentos y avance.
-import { rpc, leer, estado, puede } from "./api.js?v=202610241559";
-import { esc, num, aviso, ICON, nuevoId, fechaHora, tabla, chip, ESTADOS_JORNADA, pedir, toast } from "./ui.js?v=202610241559";
-import { escanear } from "./escaner.js?v=202610241559";
-import { rackHTML, seguirSync } from "./componentes.js?v=202610241559";
+import { rpc, leer, estado, puede } from "./api.js?v=202610242324";
+import { esc, num, aviso, ICON, nuevoId, fechaHora, tabla, chip, ESTADOS_JORNADA, pedir, toast } from "./ui.js?v=202610242324";
+import { escanear } from "./escaner.js?v=202610242324";
+import { rackHTML, seguirSync } from "./componentes.js?v=202610242324";
 
 let temporizador = null;
 export function destruir() { clearInterval(temporizador); }
@@ -251,7 +251,7 @@ function accionesSupervisor(cont, j, refrescar) {
   if (!puede("supervisor") || j.estado !== "ABIERTA") { cont.innerHTML = ""; return; }
   const pend = j.posiciones_pendientes || [];
   cont.innerHTML = `<div class="sep"></div><h3>Supervisor</h3>
-    <p class="small muted">Al finalizar el conteo se calculan las diferencias por posición + producto + lote contra el stock teórico al corte.</p>
+    <p class="small muted">Al finalizar se calculan las diferencias contra el stock al corte.</p>
     <button class="btn prim" id="finalizar">Finalizar conteo${pend.length ? ` (${pend.length} pendiente/s)` : ""}</button><div id="fin-err"></div>`;
   cont.querySelector("#finalizar").addEventListener("click", async () => {
     let motivo = null;
