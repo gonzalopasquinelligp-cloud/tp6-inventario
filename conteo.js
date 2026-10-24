@@ -1,8 +1,8 @@
 // Conteo cíclico: jornadas, captura por posición (QR o manual), recuentos y avance.
-import { rpc, leer, estado, puede } from "./api.js?v=202610242324";
-import { esc, num, aviso, ICON, nuevoId, fechaHora, tabla, chip, ESTADOS_JORNADA, pedir, toast } from "./ui.js?v=202610242324";
-import { escanear } from "./escaner.js?v=202610242324";
-import { rackHTML, seguirSync } from "./componentes.js?v=202610242324";
+import { rpc, leer, estado, puede } from "./api.js?v=202610242329";
+import { esc, num, aviso, ICON, nuevoId, fechaHora, tabla, chip, ESTADOS_JORNADA, pedir, toast } from "./ui.js?v=202610242329";
+import { escanear } from "./escaner.js?v=202610242329";
+import { rackHTML, seguirSync } from "./componentes.js?v=202610242329";
 
 let temporizador = null;
 export function destruir() { clearInterval(temporizador); }

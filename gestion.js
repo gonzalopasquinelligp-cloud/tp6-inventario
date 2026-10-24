@@ -1,8 +1,8 @@
 // Tablero de gestión: valorización, rotación y clasificación ABC / XYZ del inventario.
 // Usa los mismos datos que «Costo y servicio» (analisis_datos); los cálculos están en modelo.js.
-import { rpc, leer } from "./api.js?v=202610242324";
-import { esc, num, aviso, ICON, tabla, descargarCSV, usd, dec, pct, origen, TZ } from "./ui.js?v=202610242324";
-import { clasificar } from "./modelo.js?v=202610242324";
+import { rpc, leer } from "./api.js?v=202610242329";
+import { esc, num, aviso, ICON, tabla, descargarCSV, usd, dec, pct, origen, TZ } from "./ui.js?v=202610242329";
+import { clasificar } from "./modelo.js?v=202610242329";
 
 const fLarga = (iso) => iso.split("-").reverse().join("/");
 const usd0 = (v) => (v === null || v === undefined ? "—" : `USD ${Math.round(v).toLocaleString("es-AR")}`);

@@ -1,8 +1,8 @@
 // Costo y servicio: tablero para decidir si se puede bajar el costo del inventario sin perder nivel de servicio.
 // Los datos vienen del servidor (analisis_datos); los cálculos están en modelo.js con sus fórmulas a la vista.
-import { rpc, puede, leer } from "./api.js?v=202610242324";
-import { esc, num, aviso, ICON, tabla, pedir, toast, descargarCSV, usd, dec, pct, origen, fechaHora, TZ } from "./ui.js?v=202610242324";
-import { analizar, zDeNS, CATEGORIAS, MOTIVOS } from "./modelo.js?v=202610242324";
+import { rpc, puede, leer } from "./api.js?v=202610242329";
+import { esc, num, aviso, ICON, tabla, pedir, toast, descargarCSV, usd, dec, pct, origen, fechaHora, TZ } from "./ui.js?v=202610242329";
+import { analizar, zDeNS, CATEGORIAS, MOTIVOS } from "./modelo.js?v=202610242329";
 
 const fCorta = (iso) => { const [, m, d] = iso.split("-"); return `${d}/${m}`; };
 const fLarga = (iso) => iso.split("-").reverse().join("/");
@@ -170,16 +170,25 @@ function pintar() {
 function pintarRespuesta(res) {
   const c = res.conclusion, t = res.tot, P = res.P, mg = res.margen;
   const margenTxt = (x) => (x.hasta === null ? "falta ya" : x.falla === null ? `más de +${x.hasta}\u00a0%` : `+${x.hasta}\u00a0%`);
-  const titulo = c.tono === "si" ? "Sí, se puede" : c.veredicto.startsWith("No sin") ? "No sin perder servicio" : "No conviene";
+  // Recomendación: la acción y el motivo, con los números que la sostienen.
+  const A = t.actual.total, B = t.propuesta.total, dif = B - A, difPct = A > 0 ? Math.abs(dif / A) * 100 : null;
+  const pctTxt = difPct === null ? "" : ` (${dif < 0 ? "−" : "+"}${dec(difPct, 1)}\u00a0%)`;
+  const faltaServicio = !c.veredicto.startsWith("Sí") && dif < -0.005;
+  const titulo = c.tono === "si" ? "Aplicar la política propuesta" : faltaServicio ? "No aplicar: faltaría mercadería" : "No aplicar: cuesta más que hoy";
+  const frase = c.tono === "si"
+    ? `Baja el costo de ${usd(A)} a ${usd(B)}${pctTxt} y entrega el ${pct(t.otifPropuesta)} de los pedidos.`
+    : faltaServicio
+      ? `Bajaría el costo de ${usd(A)} a ${usd(B)}${pctTxt}, pero dejaría ${num(t.faltaPropuesta)} unidades sin entregar (entregas ${pct(t.otifPropuesta)}, hoy ${pct(t.otifActual)}).`
+      : `Costaría ${usd(B)} contra ${usd(A)} de hoy${pctTxt}.`;
   const baja = res.filas.filter((x) => x.pol.bajaConfianza && !x.pol.sinDemanda).length;
   const conVentas = res.filas.filter((x) => !x.pol.sinDemanda).length;
   const prueba = res.variacion !== 0 || res.ns !== P.v("nivel_servicio") || res.porClase.activo;
   const periodo = `${fLarga(res.series.dias[0])} al ${fLarga(res.series.dias[res.series.L - 1])} (${res.series.L} días)`;
-  const delta = (a, b, mejorMenor, fmt) => {
+  const delta = (a, b, mejorMenor, fmt, relativo = true) => {
     if (a === null || b === null) return "";
     const d = b - a;
     if (Math.abs(d) < 1e-9) return `<span class="fig-delta">sin cambio</span>`;
-    const p = a ? ` (${d > 0 ? "+" : "−"}${dec(Math.abs(d / a) * 100, 0)}\u00a0%)` : "";
+    const p = a && relativo ? ` (${d > 0 ? "+" : "−"}${dec(Math.abs(d / a) * 100, 0)}\u00a0%)` : "";
     return `<span class="fig-delta ${(d < 0) === mejorMenor ? "mejor" : "peor"}">${d > 0 ? "+" : "−"}${fmt(Math.abs(d))}${p}</span>`;
   };
   const formulas = [];
@@ -192,16 +201,16 @@ function pintarRespuesta(res) {
   // y si depende del supuesto de costo por orden. El resto queda en «Límites del resultado».
   const d = c.detalle, porque = [d[0], d[1], d[2]].filter(Boolean);
   estadoVista.el.querySelector("#respuesta").innerHTML = `
-    <p class="resp-pregunta">¿Se puede bajar el costo del inventario sin dejar de entregar?</p>
+    <p class="resp-pregunta">Recomendación · ${periodo}</p>
     <div class="ver-frase tono-${c.tono}">
       <span class="resp-titulo">${titulo}</span>
-      <span class="resp-texto">${esc(c.veredicto.replace(/^(Sí|No sin perder servicio|No)\.\s*/, ""))}</span>
+      <span class="resp-texto">${frase}</span>
     </div>
     ${prueba ? `<p class="resp-escenario"><span class="org org-sim">Prueba</span> Escenario de prueba: ventas ${signoVar(res.variacion)}, nivel de servicio ${nsTxt(res)}. No se guarda.</p>` : ""}
     <div class="figuras figuras-4" id="kpis" aria-label="Propuesta contra hoy">
       ${figura("prop", `Costo del inventario en ${res.series.L} días`, usd0(t.propuesta.total), usd0(t.actual.total), delta(t.actual.total, t.propuesta.total, true, usd0),
         `Capital + almacenamiento + órdenes de compra + devoluciones, ${periodo}. Propuesta en régimen: stock promedio SS + Q ÷ 2.`)}
-      ${figura("prop", "Entregas que se cumplen (OTIF)", pct(t.otifPropuesta), pct(t.otifActual), delta(t.otifActual, t.otifPropuesta, false, (x) => pct(x)),
+      ${figura("prop", "Entregas que se cumplen (OTIF)", pct(t.otifPropuesta), pct(t.otifActual), delta(t.otifActual, t.otifPropuesta, false, (x) => `${dec(x * 100, 1)} puntos`, false),
         `Líneas de venta entregadas completas ÷ ${t.lineas} líneas del período. Simulado: cada retiro por venta es un pedido de ese día.`)}
       ${figura("prop", "Unidades que faltarían", `${num(t.faltaPropuesta)}\u00a0un.`, `${num(t.faltaActual)}\u00a0un.`, delta(t.faltaActual, t.faltaPropuesta, true, (x) => `${num(x)}\u00a0un.`),
         "Unidades pedidas que no se habrían podido entregar por falta de stock, en la simulación del período.")}
