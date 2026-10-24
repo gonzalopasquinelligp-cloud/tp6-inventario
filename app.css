@@ -401,6 +401,8 @@ details.panel[open] > summary { margin-bottom: 12px; }
 .g-tip .tl { width: 12px; height: 3px; border-radius: 2px; flex: none; }
 .tl-hoy { background: var(--s-hoy); } .tl-prop { background: var(--s-prop); } .tl-ventas { background: var(--s-ventas); height: 10px !important; width: 10px !important; }
 
+.cs-clases { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; min-height: 44px; }
+.cs-clases > span { display: inline-flex; align-items: center; gap: 6px; }
 .serv-clave { margin: 0 0 12px; font-size: .98rem; }
 
 /* Objetivos e indicadores */

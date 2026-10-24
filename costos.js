@@ -1,13 +1,17 @@
 // Costo y servicio: tablero para decidir si se puede bajar el costo del inventario sin perder nivel de servicio.
 // Los datos vienen del servidor (analisis_datos); los cálculos están en modelo.js con sus fórmulas a la vista.
-import { rpc, puede, leer } from "./api.js?v=202610241541";
-import { esc, num, aviso, ICON, tabla, pedir, toast, descargarCSV, usd, dec, pct, origen, fechaHora, TZ } from "./ui.js?v=202610241541";
-import { analizar, zDeNS, CATEGORIAS, MOTIVOS } from "./modelo.js?v=202610241541";
+import { rpc, puede, leer } from "./api.js?v=202610241559";
+import { esc, num, aviso, ICON, tabla, pedir, toast, descargarCSV, usd, dec, pct, origen, fechaHora, TZ } from "./ui.js?v=202610241559";
+import { analizar, zDeNS, CATEGORIAS, MOTIVOS } from "./modelo.js?v=202610241559";
 
 const fCorta = (iso) => { const [, m, d] = iso.split("-"); return `${d}/${m}`; };
 const fLarga = (iso) => iso.split("-").reverse().join("/");
-const usd0 = (v) => (v === null || v === undefined ? "—" : `USD ${Math.round(v).toLocaleString("es-AR")}`);
-const signoVar = (v) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v)} %`;
+const usd0 = (v) => (v === null || v === undefined ? "—" : `USD\u00a0${Math.round(v).toLocaleString("es-AR")}`);
+// Texto del nivel de servicio en uso: un valor o los tres niveles por clase ABC.
+const nsTxt = (res) => (res.porClase.activo
+  ? `por clase ABC (A ${dec(res.porClase.niveles.A.valor, 1)}\u00a0%, B ${dec(res.porClase.niveles.B.valor, 1)}\u00a0%, C ${dec(res.porClase.niveles.C.valor, 1)}\u00a0%)`
+  : `${dec(res.ns, 1)}\u00a0%`);
+const signoVar = (v) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v)}\u00a0%`;
 
 let estadoVista = null;
 let alRedimensionar = null;
@@ -15,7 +19,7 @@ let alRedimensionar = null;
 export function destruir() { if (alRedimensionar) window.removeEventListener("resize", alRedimensionar); alRedimensionar = null; }
 
 export async function render(el, { params }) {
-  estadoVista = { el, datos: null, variacion: 0, ns: null, gran: "dia", desde: params[0] || null, hasta: params[1] || null, sel: null };
+  estadoVista = { el, datos: null, variacion: 0, ns: null, porClase: false, gran: "dia", desde: params[0] || null, hasta: params[1] || null, sel: null };
   el.innerHTML = `<div class="cs">
     <section class="cs-ctrl" aria-label="Período y escenario">
       <button class="cs-resumen" type="button" id="cs-abrir" aria-expanded="false" aria-controls="cs-panel">
@@ -33,7 +37,10 @@ export async function render(el, { params }) {
           <div class="cs-campo sim-campo"><label for="s-var">Variación de ventas</label>
             <div class="sim-fila"><input id="s-var-r" type="range" min="-50" max="100" step="5" aria-label="Variación de ventas, deslizador">
             <span class="sim-num"><input id="s-var" type="number" min="-90" max="300" step="1" inputmode="numeric"> %</span></div></div>
-          <div class="cs-campo sim-campo"><label for="s-ns">Nivel de servicio buscado</label>
+          <div class="cs-campo"><label for="s-modo">Nivel de servicio</label>
+            <select id="s-modo"><option value="unico">Uno para todos</option><option value="clase">Por clase ABC</option></select></div>
+          <div class="cs-campo sim-campo oculto" id="s-clases"></div>
+          <div class="cs-campo sim-campo" id="s-unico"><label for="s-ns">Nivel de servicio buscado</label>
             <div class="sim-fila"><input id="s-ns-r" type="range" min="80" max="99.9" step="0.1" aria-label="Nivel de servicio, deslizador">
             <span class="sim-num"><input id="s-ns" type="number" min="50" max="99.9" step="0.1" inputmode="decimal"> %</span></div>
             <div class="ayuda" id="s-z"></div></div>
@@ -76,8 +83,10 @@ function conectarSimulador() {
   nr.addEventListener("input", () => { n.value = nr.value; leerNs(nr.value); });
   n.addEventListener("input", () => { nr.value = n.value; leerNs(n.value); });
   el.querySelector("#simulador").addEventListener("submit", (e) => e.preventDefault());
+  el.querySelector("#s-modo").addEventListener("change", (e) => { s.porClase = e.target.value === "clase"; if (s.datos) pintar(); });
   el.querySelector("#s-reset").addEventListener("click", () => {
-    s.variacion = 0; s.ns = Number(s.datos?.parametros.find((p) => p.clave === "nivel_servicio")?.valor ?? 95);
+    s.variacion = 0; s.porClase = false; el.querySelector("#s-modo").value = "unico";
+    s.ns = Number(s.datos?.parametros.find((p) => p.clave === "nivel_servicio")?.valor ?? 95);
     v.value = vr.value = s.variacion; n.value = nr.value = s.ns; if (s.datos) pintar();
   });
 }
@@ -127,14 +136,20 @@ function armarCuerpo() {
 function pintar() {
   const s = estadoVista, el = s.el;
   let res;
-  try { res = analizar(s.datos, { variacion: s.variacion, ns: s.ns, granularidad: s.gran }); }
+  try { res = analizar(s.datos, { variacion: s.variacion, ns: s.ns, granularidad: s.gran, porClase: s.porClase }); }
   catch (e) { el.querySelector("#msg").innerHTML = aviso("error", `No se pudo calcular: ${esc(e.message)}`); return; }
   s.res = res;
   const nsParam = res.P.leer("nivel_servicio");
   el.querySelector("#s-z").innerHTML = s.ns === nsParam.valor ? `z = ${dec(zDeNS(s.ns / 100), 3)} ${origen(nsParam.origen, nsParam.razon)}`
     : `z = ${dec(zDeNS(s.ns / 100), 3)} <span class="org org-sim" title="Valor de prueba: no se guarda.">Prueba</span>`;
   el.querySelector("#cs-resumen-txt").innerHTML = `<b>${fCorta(res.series.dias[0])}–${fCorta(res.series.dias[res.series.L - 1])}</b>`
-    + ` · ventas ${signoVar(res.variacion)} · servicio ${dec(res.ns, 1)} %`;
+    + ` · ventas ${signoVar(res.variacion)} · servicio ${res.porClase.activo ? "por clase ABC" : `${dec(res.ns, 1)}\u00a0%`}`;
+  const pc = res.porClase, modo = el.querySelector("#s-modo");
+  modo.querySelector('[value="clase"]').disabled = !pc.disponible;
+  if (!pc.disponible && s.porClase) { s.porClase = false; modo.value = "unico"; }
+  el.querySelector("#s-unico").classList.toggle("oculto", pc.activo);
+  el.querySelector("#s-clases").classList.toggle("oculto", !pc.activo);
+  el.querySelector("#s-clases").innerHTML = pc.disponible ? `<span class="cs-clases">${["A", "B", "C"].map((k) => `<span><span class="clase abc-${k}">${k}</span> ${dec(pc.niveles[k].valor, 1)}\u00a0% ${origen(pc.niveles[k].origen, pc.niveles[k].razon)}</span>`).join("")}</span>` : "";
   pintarRespuesta(res);
   pintarMetas(res);
   pintarGrafico(res);
@@ -153,17 +168,18 @@ function pintar() {
 // Respuesta: veredicto y tres números (costo, entregas, faltantes)
 // ---------------------------------------------------------------------
 function pintarRespuesta(res) {
-  const c = res.conclusion, t = res.tot, P = res.P;
+  const c = res.conclusion, t = res.tot, P = res.P, mg = res.margen;
+  const margenTxt = (x) => (x.hasta === null ? "falta ya" : x.falla === null ? `más de +${x.hasta}\u00a0%` : `+${x.hasta}\u00a0%`);
   const titulo = c.tono === "si" ? "Sí, se puede" : c.veredicto.startsWith("No sin") ? "No sin perder servicio" : "No conviene";
   const baja = res.filas.filter((x) => x.pol.bajaConfianza && !x.pol.sinDemanda).length;
   const conVentas = res.filas.filter((x) => !x.pol.sinDemanda).length;
-  const prueba = res.variacion !== 0 || res.ns !== P.v("nivel_servicio");
+  const prueba = res.variacion !== 0 || res.ns !== P.v("nivel_servicio") || res.porClase.activo;
   const periodo = `${fLarga(res.series.dias[0])} al ${fLarga(res.series.dias[res.series.L - 1])} (${res.series.L} días)`;
   const delta = (a, b, mejorMenor, fmt) => {
     if (a === null || b === null) return "";
     const d = b - a;
     if (Math.abs(d) < 1e-9) return `<span class="fig-delta">sin cambio</span>`;
-    const p = a ? ` (${d > 0 ? "+" : "−"}${dec(Math.abs(d / a) * 100, 0)} %)` : "";
+    const p = a ? ` (${d > 0 ? "+" : "−"}${dec(Math.abs(d / a) * 100, 0)}\u00a0%)` : "";
     return `<span class="fig-delta ${(d < 0) === mejorMenor ? "mejor" : "peor"}">${d > 0 ? "+" : "−"}${fmt(Math.abs(d))}${p}</span>`;
   };
   const figura = (serie, etiqueta, valor, hoy, dlt, formula) => `<div class="fig" tabindex="0" title="${esc(formula)}">
@@ -174,8 +190,9 @@ function pintarRespuesta(res) {
   // Las conclusiones que más ayudan a decidir: qué explica la diferencia, qué pasa con el stock,
   // si depende del supuesto de costo por orden y cuánto margen hay ante más ventas.
   const d = c.detalle, porque = [...new Set([d[0], d[1], d[2], d[d.length - 1]].filter(Boolean))];
-  const m = res.nsMinimoCompleto;
-  porque.push(m ? `El nivel de servicio más bajo que entrega el 100 % en la simulación es ${dec(m.ns, 1)} %, con un costo de ${usd(m.costoPropuesta)}. Ver «Nivel de servicio».`
+  const m = res.nsMinimoCompleto, pc = res.porClase;
+  if (pc.disponible && !pc.activo) porque.push(`Con nivel de servicio por clase ABC (A ${dec(pc.niveles.A.valor, 1)} %, B ${dec(pc.niveles.B.valor, 1)} %, C ${dec(pc.niveles.C.valor, 1)} %) la propuesta costaría ${usd(pc.costo)}, con OTIF ${pct(pc.otif)} y ${num(pc.falta)} unidades sin entregar.`);
+  porque.push(m ? `El nivel de servicio más bajo que entrega el 100 % en la simulación es ${dec(m.ns, 1)} %, con un costo de ${usd(m.costoPropuesta)}, pero solo aguanta subas de ventas de hasta +${m.margen.hasta ?? 0} %. Ver «Nivel de servicio».`
     : "Ningún nivel de servicio hasta 99,9 % entrega el 100 % en la simulación. Ver «Nivel de servicio».");
   estadoVista.el.querySelector("#respuesta").innerHTML = `
     <p class="resp-pregunta">¿Se puede bajar el costo del inventario sin dejar de entregar?</p>
@@ -183,14 +200,16 @@ function pintarRespuesta(res) {
       <span class="resp-titulo">${titulo}</span>
       <span class="resp-texto">${esc(c.veredicto.replace(/^(Sí|No sin perder servicio|No)\.\s*/, ""))}</span>
     </div>
-    ${prueba ? `<p class="resp-escenario"><span class="org org-sim">Prueba</span> Escenario de prueba: ventas ${signoVar(res.variacion)}, nivel de servicio ${dec(res.ns, 1)} %. No se guarda.</p>` : ""}
-    <div class="figuras" id="kpis" aria-label="Propuesta contra hoy">
+    ${prueba ? `<p class="resp-escenario"><span class="org org-sim">Prueba</span> Escenario de prueba: ventas ${signoVar(res.variacion)}, nivel de servicio ${nsTxt(res)}. No se guarda.</p>` : ""}
+    <div class="figuras figuras-4" id="kpis" aria-label="Propuesta contra hoy">
       ${figura("prop", `Costo del inventario en ${res.series.L} días`, usd0(t.propuesta.total), usd0(t.actual.total), delta(t.actual.total, t.propuesta.total, true, usd0),
         `Capital + almacenamiento + órdenes de compra + devoluciones, ${periodo}. Propuesta en régimen: stock promedio SS + Q ÷ 2.`)}
       ${figura("prop", "Entregas que se cumplen (OTIF)", pct(t.otifPropuesta), pct(t.otifActual), delta(t.otifActual, t.otifPropuesta, false, (x) => pct(x)),
         `Líneas de venta entregadas completas ÷ ${t.lineas} líneas del período. Simulado: cada retiro por venta es un pedido de ese día.`)}
-      ${figura("prop", "Unidades que faltarían", `${num(t.faltaPropuesta)} un.`, `${num(t.faltaActual)} un.`, delta(t.faltaActual, t.faltaPropuesta, true, (x) => `${num(x)} un.`),
+      ${figura("prop", "Unidades que faltarían", `${num(t.faltaPropuesta)}\u00a0un.`, `${num(t.faltaActual)}\u00a0un.`, delta(t.faltaActual, t.faltaPropuesta, true, (x) => `${num(x)}\u00a0un.`),
         "Unidades pedidas que no se habrían podido entregar por falta de stock, en la simulación del período.")}
+      ${figura("prop", "Aguanta subas de ventas de hasta", margenTxt(mg.propuesta), margenTxt(mg.actual), "",
+        `Mayor aumento de ventas, de 5 en 5 %, sin unidades faltantes, con la política calculada hoy (sin recalcularla).${mg.propuesta.falla !== null ? ` Con +${mg.propuesta.falla} % la propuesta deja ${num(mg.propuesta.falta)} un. sin entregar.` : ""}${mg.actual.falla !== null ? ` Hoy falta mercadería desde +${mg.actual.falla} %.` : ""}`)}
     </div>
     <p class="resp-metas" id="resp-metas"></p>
     <div class="resp-pie">
@@ -234,7 +253,7 @@ function indicadores(res) {
       hoy: pct(t.otifActual), prop: pct(t.otifPropuesta), ok: cumple(t.otifPropuesta === null ? null : t.otifPropuesta * 100, mOtif, true),
       S: "Porcentaje de líneas de venta entregadas completas y el mismo día en que se pidieron, en todos los productos.",
       M: `OTIF = líneas entregadas completas ÷ líneas de venta del período (${t.lineas} líneas, ${periodo}). Simulado: cada retiro por venta registrado es una línea de pedido.`,
-      A: `En la simulación la propuesta entrega ${pct(t.otifPropuesta)} con nivel de servicio ${dec(res.ns, 1)}\u00a0%. ${m ? `El nivel más bajo que entrega todo es ${dec(m.ns, 1)}\u00a0%.` : "Ningún nivel hasta 99,9 % entrega todo."}`,
+      A: `En la simulación la propuesta entrega ${pct(t.otifPropuesta)} con nivel de servicio ${nsTxt(res)}. ${m ? `El nivel más bajo que entrega todo es ${dec(m.ns, 1)}\u00a0%.` : "Ningún nivel hasta 99,9 % entrega todo."}`,
       R: "Es la condición de la pregunta: bajar el costo sin dejar de entregar." },
     { id: "faltantes", t: "Unidades no entregadas", meta: mFal, metaTxt: mFal.valor === null ? "sin meta" : `≤ ${num(mFal.valor)}\u00a0un.`,
       hoy: `${num(t.faltaActual)}\u00a0un.`, prop: `${num(t.faltaPropuesta)}\u00a0un.`, ok: cumple(t.faltaPropuesta, mFal, false),
@@ -246,7 +265,7 @@ function indicadores(res) {
       hoy: usd(t.actual.total), prop: `${usd(t.propuesta.total)} (${redProp === null ? "—" : `${redProp >= 0 ? "−" : "+"}${dec(Math.abs(redProp), 1)}\u00a0%`})`, ok: cumple(redProp, mCos, true),
       S: "Costo total del inventario: capital inmovilizado, almacenamiento, órdenes de compra y devoluciones, en USD.",
       M: `Baja = (costo de hoy − costo de la propuesta) ÷ costo de hoy, mismo período (${periodo}, ${L} días). Línea de base: ${usd(t.actual.total)}.`,
-      A: `La simulación da ${redProp === null ? "—" : `${dec(redProp, 1)}\u00a0%`} con nivel de servicio ${dec(res.ns, 1)}\u00a0% y ${dec(red(ult.costoActual, ult.costoPropuesta), 1)}\u00a0% con ${dec(ult.ns, 1)}\u00a0%. Depende de supuestos (costos unitarios, costo por orden).`,
+      A: `La simulación da ${redProp === null ? "—" : `${dec(redProp, 1)}\u00a0%`} con nivel de servicio ${nsTxt(res)} y ${dec(red(ult.costoActual, ult.costoPropuesta), 1)}\u00a0% con ${dec(ult.ns, 1)}\u00a0%. Depende de supuestos (costos unitarios, costo por orden).`,
       R: "Es el costo que se busca bajar: plata inmovilizada y gastos de reposición." },
     { id: "exactitud", t: "Exactitud de inventario", meta: mEx, metaTxt: mEx.valor === null ? "sin meta" : `≥ ${dec(mEx.valor, 1)}\u00a0% de registros`,
       hoy: ex ? pct(ex.valor) : "sin conteo", prop: "no depende de la política", ok: ex ? cumple(ex.valor * 100, mEx, true) : null, soloHoy: true,
@@ -292,7 +311,7 @@ function escalaNice(max) {
   for (const m of [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10]) if (m * exp >= max) return m * exp;
   return 10 * exp;
 }
-const compacto = (v) => (Math.abs(v) >= 1000 ? `${dec(v / 1000, 1)} k` : dec(v, 0));
+const compacto = (v) => (Math.abs(v) >= 1000 ? `${dec(v / 1000, 1)}\u00a0k` : dec(v, 0));
 function columna(x, y, w, h) {
   if (h <= 0) return "";
   const r = Math.min(4, h, w / 2);
@@ -347,7 +366,7 @@ function pintarGrafico(res) {
   s += `<text x="${W - pr + 12}" y="${p1.y + p1.h / 2 + 4}" class="g-etq"><tspan class="g-etq-s">Total</tspan> ${dec(res.tot.ventas, 0)}</text>`;
   // Panel 2: entregas cumplidas acumuladas
   s += `<text x="0" y="${p2.y - 12}" class="g-tit">Entregas que se cumplen, acumulado</text>`;
-  s += grid(YO, oMin, `${dec(oMin * 100, 0)} %`) + grid(YO, 1, "100 %");
+  s += grid(YO, oMin, `${dec(oMin * 100, 0)}\u00a0%`) + grid(YO, 1, "100\u00a0%");
   s += `<path d="${linea((a) => a.oA, YO)}" class="g-l g-l-hoy"/><path d="${linea((a) => a.oP, YO)}" class="g-l g-l-prop"/>`;
   g.forEach((p, i) => { if (p.lP > p.okP && ac[i].oP !== null) s += `<circle cx="${Xc(i)}" cy="${YO(ac[i].oP)}" r="5" class="g-falta"/>`; });
   if (u.oA !== null && u.oP !== null) s += fin(YO(u.oA), YO(u.oP), pct(u.oA), pct(u.oP), `<tspan class="g-etq-s">Ambas</tspan> ${pct(u.oP)}`);
@@ -430,25 +449,32 @@ function pintarGrafico(res) {
 // Nivel de servicio: costo y entregas en cada nivel (SS, ROP y lote vinculados)
 // ---------------------------------------------------------------------
 function pintarServicio(res) {
-  const b = estadoVista.el.querySelector("#b-servicio"), m = res.nsMinimoCompleto;
+  const b = estadoVista.el.querySelector("#b-servicio"), m = res.nsMinimoCompleto, pc = res.porClase;
+  const enUso = (c) => (c.clase ? pc.activo : !pc.activo && c.ns === res.ns);
+  const filasServ = pc.disponible ? [...res.curvaServicio, { clase: true, costoPropuesta: pc.costo, costoActual: pc.costoActual, otifPropuesta: pc.otif,
+    faltaPropuesta: pc.falta, ssTotal: pc.ssTotal, maxTotal: pc.maxTotal }] : res.curvaServicio;
   b.innerHTML = `<div class="bloque-cab"><h2>Nivel de servicio: cuánto cuesta entregar todo</h2>
       <p class="bloque-sub">Cada nivel cambia z y, con él, el stock de seguridad, el punto de pedido y el máximo de cada producto.${res.variacion ? ` Ventas ${signoVar(res.variacion)}.` : ""}</p></div>
     ${m ? `<p class="serv-clave"><b>${dec(m.ns, 1)}\u00a0% es el nivel más bajo que entrega el 100\u00a0%</b> en la simulación del período: cuesta ${usd(m.costoPropuesta)} contra ${usd(m.costoActual)} de hoy. La prueba usa los mismos ${res.series.L} días con los que se calcula el stock de seguridad: con otras ventas un nivel bajo puede quedarse corto.</p>`
       : `<p class="serv-clave"><b>Ningún nivel hasta 99,9\u00a0% entrega el 100\u00a0%</b> en la simulación: la propuesta deja unidades sin entregar aun con el máximo stock de seguridad.</p>`}
+    ${pc.disponible ? (() => { const tope = res.curvaServicio[res.curvaServicio.length - 1];
+      return `<p class="serv-clave"><b>Por clase ABC</b> (A ${dec(pc.niveles.A.valor, 1)}\u00a0%, B ${dec(pc.niveles.B.valor, 1)}\u00a0%, C ${dec(pc.niveles.C.valor, 1)}\u00a0%) cuesta ${usd(pc.costo)} y aguanta subas de ventas de hasta ${pc.margen?.falla === null ? "más de " : ""}+${pc.margen?.hasta ?? 0}\u00a0%; con ${dec(tope.ns, 1)}\u00a0% para todos, ${usd(tope.costoPropuesta)} y +${tope.margen?.hasta ?? 0}\u00a0%.</p>`; })() : ""}
     ${tabla([
-      { t: "Nivel de servicio", html: (c) => `<b>${dec(c.ns, 1)}\u00a0%</b>${c === m ? ` <span class="chip ok">Más barato que entrega todo</span>` : ""}${c.ns === res.ns ? ` <span class="chip prim">En uso</span>` : ""}` },
+      { t: "Nivel de servicio", html: (c) => `<b>${c.clase ? "Por clase ABC" : `${dec(c.ns, 1)}\u00a0%`}</b>${c.clase ? `<div class="nota">A ${dec(pc.niveles.A.valor, 1)} %, B ${dec(pc.niveles.B.valor, 1)} %, C ${dec(pc.niveles.C.valor, 1)} %</div>` : ""}${c === m ? ` <span class="chip ok">Más barato que entrega todo</span>` : ""}${enUso(c) ? ` <span class="chip prim">En uso</span>` : ""}` },
       { t: "Costo propuesta", num: true, html: (c) => `<span class="${c.costoPropuesta > c.costoActual ? "peor" : ""}" title="Costo en régimen del período con este nivel. Hoy: ${usd(c.costoActual)}">${usd(c.costoPropuesta)}</span>` },
       { t: "Entregas (OTIF)", num: true, html: (c) => `<span class="${c.faltaPropuesta > 0 ? "peor" : ""}">${pct(c.otifPropuesta)}</span>` },
       { t: "Faltan, un.", num: true, html: (c) => `<span class="${c.faltaPropuesta > 0 ? "peor" : ""}">${num(c.faltaPropuesta)}</span>` },
-      { t: "", html: (c) => (c.ns === res.ns ? "" : `<button class="btn chico" type="button" data-ns="${c.ns}">Usar</button>`) },
-      { t: "z", num: true, html: (c) => `<span title="z de la normal estándar para ${dec(c.ns, 1)} %">${dec(c.z, 3)}</span>` },
+      { t: "Aguanta subas de ventas", num: true, html: (c) => { const g = c.clase ? pc.margen : c.margen; return g ? `<span title="Mayor aumento de ventas sin faltantes, sin recalcular la política">${g.hasta === null ? "—" : g.falla === null ? `más de +${g.hasta}\u00a0%` : `+${g.hasta}\u00a0%`}</span>` : "—"; } },
+      { t: "", html: (c) => (enUso(c) ? "" : `<button class="btn chico" type="button" data-ns="${c.clase ? "clase" : c.ns}">Usar</button>`) },
+      { t: "z", num: true, html: (c) => (c.clase ? "según clase" : `<span title="z de la normal estándar para ${dec(c.ns, 1)} %">${dec(c.z, 3)}</span>`) },
       { t: "Stock de seguridad, un.", num: true, html: (c) => `<span title="Suma de SS = z × σ × √plazo de los productos con ventas">${num(c.ssTotal)}</span>` },
       { t: "Máximo, un.", num: true, html: (c) => `<span title="Suma de SS + Q de los productos con ventas">${num(c.maxTotal)}</span>` },
-    ], res.curvaServicio, { claseFila: (c) => (c.ns === res.ns ? "fila-actual" : "") })}
+    ], filasServ, { claseFila: (c) => (enUso(c) ? "fila-actual" : "") })}
     <p class="g-nota">100 % no se puede calcular: z sería infinito. La meta de entregar todo se controla con el OTIF simulado.</p>`;
   b.querySelectorAll("[data-ns]").forEach((btn) => btn.addEventListener("click", () => {
-    const v = Number(btn.dataset.ns), el = estadoVista.el;
-    estadoVista.ns = v; el.querySelector("#s-ns").value = el.querySelector("#s-ns-r").value = v; pintar();
+    const el = estadoVista.el;
+    if (btn.dataset.ns === "clase") { estadoVista.porClase = true; el.querySelector("#s-modo").value = "clase"; pintar(); }
+    else { const v = Number(btn.dataset.ns); estadoVista.porClase = false; el.querySelector("#s-modo").value = "unico"; estadoVista.ns = v; el.querySelector("#s-ns").value = el.querySelector("#s-ns-r").value = v; pintar(); }
     el.querySelector("#b-servicio").scrollIntoView({ block: "start" });
   }));
 }
@@ -537,7 +563,7 @@ function pintarPolitica(res) {
   const filas = res.filas;
   const b = estadoVista.el.querySelector("#b-politica");
   b.innerHTML = `<div class="bloque-cab"><h2>Política de stock por producto</h2>
-      <p class="bloque-sub">Nivel de servicio ${dec(res.ns, 1)} % (z = ${dec(zDeNS(res.ns / 100), 3)})${res.variacion ? ` · ventas ${res.variacion > 0 ? "+" : ""}${res.variacion} %` : ""}. SS = stock de seguridad, ROP = punto de reorden, Q = lote a pedir. Pasá el cursor sobre un valor para ver la cuenta.</p>
+      <p class="bloque-sub">Nivel de servicio ${nsTxt(res)}${res.porClase.activo ? "" : ` (z = ${dec(zDeNS(res.ns / 100), 3)})`}${res.variacion ? ` · ventas ${res.variacion > 0 ? "+" : ""}${res.variacion} %` : ""}. SS = stock de seguridad, ROP = punto de reorden, Q = lote a pedir. Pasá el cursor sobre un valor para ver la cuenta.</p>
       <div class="btns"><button class="btn chico" id="csv-pol">${ICON.csv} Exportar CSV</button></div></div>
     ${tabla([
       { t: "Producto", html: (x) => `<div class="col-prod"><b>${esc(x.prod.codigo)}</b><div class="nota">${esc(x.prod.descripcion)}</div></div>` },
@@ -550,6 +576,7 @@ function pintarPolitica(res) {
       { t: "Confianza", html: (x) => x.pol.sinDemanda ? `<span class="conf conf-nd">Sin ventas</span>`
           : x.pol.bajaConfianza ? `<span class="conf conf-baja" title="${esc(x.pol.motivosConf.join(" y "))}">Baja</span><div class="nota">${x.pol.diasVenta} de ${x.pol.n} días con venta</div>`
           : `<span class="conf conf-ok">Aceptable</span><div class="nota">${x.pol.diasVenta} de ${x.pol.n} días con venta</div>` },
+      { t: "Nivel de servicio", num: true, html: (x) => `<span title="z = ${dec(x.pol.z, 3)}">${dec(x.pol.ns, 1)}\u00a0%</span><div class="nota">Clase ${res.porClase.abc[x.prod.codigo] || "C"}</div>` },
       { t: "Plazo, días", num: true, html: (x) => conOrigen(x.pol.LT, P.leer("lead_time", x.prod.codigo), (v) => dec(v, 1)) },
       { t: "SS", num: true, html: (x) => `<span class="calc ${depSup(x, P)}" title="${esc(tSS(x))}">${x.pol.SS ?? "—"}</span>` },
       { t: "ROP", num: true, html: (x) => `<span class="calc" title="${esc(tROP(x.pol))}">${x.pol.ROP ?? "—"}</span>` },
@@ -572,7 +599,7 @@ function pintarPolitica(res) {
     { t: "Producto", f: (x) => x.prod.codigo }, { t: "Descripcion", f: (x) => x.prod.descripcion },
     { t: "RetirosPeriodo", f: (x) => dec(x.pol.demandaTotal, 2) }, { t: "DemandaDiaria", f: (x) => dec(x.pol.dbar, 4) }, { t: "Desvio", f: (x) => dec(x.pol.sigma, 4) },
     { t: "Periodos", f: (x) => x.pol.n }, { t: "DiasConVenta", f: (x) => x.pol.diasVenta }, { t: "BajaConfianza", f: (x) => (x.pol.bajaConfianza ? "Si" : "No") },
-    { t: "PlazoDias", f: (x) => x.pol.LT }, { t: "OrigenPlazo", f: (x) => P.leer("lead_time", x.prod.codigo).origen }, { t: "NivelServicio", f: () => res.ns },
+    { t: "PlazoDias", f: (x) => x.pol.LT }, { t: "OrigenPlazo", f: (x) => P.leer("lead_time", x.prod.codigo).origen }, { t: "NivelServicio", f: (x) => x.pol.ns }, { t: "ClaseABC", f: (x) => res.porClase.abc[x.prod.codigo] || "C" },
     { t: "z", f: (x) => dec(x.pol.z, 4) }, { t: "StockSeguridad", f: (x) => x.pol.SS }, { t: "PuntoReorden", f: (x) => x.pol.ROP },
     { t: "EOQ", f: (x) => dec(x.pol.EOQ, 2) }, { t: "LoteQ", f: (x) => x.pol.Q }, { t: "StockObjetivo", f: (x) => x.pol.objetivo },
     { t: "StockCierre", f: (x) => x.stockFin }, { t: "CoberturaDias", f: (x) => dec(x.cobertura, 2) }, { t: "Riesgo", f: (x) => x.riesgo.t },
@@ -630,7 +657,7 @@ function pintarCostos(res) {
 function pintarSensibilidad(res) {
   const b = estadoVista.el.querySelector("#b-sensib");
   b.innerHTML = `<div class="bloque-cab"><h2>Si las ventas aumentan</h2>
-      <p class="bloque-sub">Misma historia con cada retiro multiplicado por la variación. La política propuesta se recalcula con la demanda nueva; la actual repite sus recepciones registradas. Nivel de servicio ${dec(res.ns, 1)} %.</p></div>
+      <p class="bloque-sub">Misma historia con cada retiro multiplicado por la variación. La política propuesta se recalcula con la demanda nueva; la actual repite sus recepciones registradas. Nivel de servicio ${nsTxt(res)}.</p></div>
     ${tabla([
       { t: "Ventas", html: (s) => `<b>${s.variacion === 0 ? "Registradas" : `+${s.variacion} %`}</b>` },
       { t: "Costo actual", num: true, html: (s) => usd(s.costoActual) },

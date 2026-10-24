@@ -254,41 +254,57 @@ export function costoPropuesta(pol, P, L, actual, faltantes) {
 // ---------------------------------------------------------------------
 // Análisis completo
 // ---------------------------------------------------------------------
-export function analizar(datos, { variacion = 0, ns = null, granularidad = "dia" } = {}) {
+export function analizar(datos, { variacion = 0, ns = null, granularidad = "dia", porClase = false } = {}) {
   const P = prepararParametros(datos.parametros);
   const S = prepararSeries(datos);
   const nsUsado = ns ?? P.v("nivel_servicio") ?? 95;
-  const res = calcular(S, P, variacion, nsUsado);
+  // Nivel de servicio por clase ABC (consumo valorizado de las ventas registradas): A, B y C con su propio nivel.
+  const abc = Object.fromEntries(clasificar(datos).filas.map((x) => [x.codigo, x.abc]));
+  const niveles = { A: P.leer("ns_clase_a"), B: P.leer("ns_clase_b"), C: P.leer("ns_clase_c") };
+  const disponible = Object.values(niveles).every((x) => x.valor !== null);
+  const nsDeClase = (cod) => niveles[abc[cod] || "C"].valor;
+  const activo = porClase && disponible;
+  const nsCalc = activo ? nsDeClase : nsUsado;
+  const res = calcular(S, P, variacion, nsCalc);
   res.P = P; res.series = S; res.variacion = variacion; res.ns = nsUsado; res.granularidad = granularidad;
   res.periodos = agrupar(S, res, granularidad);
+  const rClase = !disponible ? null : activo ? res : calcular(S, P, variacion, nsDeClase);
+  const conDem = (r) => r.filas.filter((x) => x.pol.calculable && !x.pol.sinDemanda);
+  res.porClase = { activo, disponible, niveles, abc, costo: rClase?.tot.propuesta.total ?? null, costoActual: rClase?.tot.actual.total ?? null,
+    otif: rClase?.tot.otifPropuesta ?? null, falta: rClase?.tot.faltaPropuesta ?? null,
+    margen: disponible ? margenVentas(S, P, nsDeClase).propuesta : null,
+    ssTotal: rClase ? conDem(rClase).reduce((a, x) => a + x.pol.SS, 0) : null, maxTotal: rClase ? conDem(rClase).reduce((a, x) => a + x.pol.objetivo, 0) : null };
   res.sensibilidad = [0, 10, 20, 30, 50].map((v) => {
-    const r = v === variacion ? res : calcular(S, P, v, nsUsado);
+    const r = v === variacion ? res : calcular(S, P, v, nsCalc);
     return { variacion: v, costoActual: r.tot.actual.total, costoPropuesta: r.tot.propuesta.total,
       otifActual: r.tot.otifActual, otifPropuesta: r.tot.otifPropuesta, faltaActual: r.tot.faltaActual, faltaPropuesta: r.tot.faltaPropuesta };
   });
   // Curva costo–servicio: la misma historia con cada nivel de servicio (SS, ROP y lote se recalculan con su z).
-  const niveles = [...new Set([80, 85, 90, 95, 97.5, 99, 99.5, 99.9, nsUsado])].sort((x, y) => x - y);
-  res.curvaServicio = niveles.map((ns) => {
-    const r = ns === nsUsado ? res : calcular(S, P, variacion, ns);
+  const nivelesCurva = [...new Set([80, 85, 90, 95, 97.5, 99, 99.5, 99.9, nsUsado])].sort((x, y) => x - y);
+  res.curvaServicio = nivelesCurva.map((ns) => {
+    const r = ns === nsUsado && !activo ? res : calcular(S, P, variacion, ns);
     const calc = r.filas.filter((x) => x.pol.calculable && !x.pol.sinDemanda);
-    return { ns, z: zDeNS(ns / 100), ssTotal: calc.reduce((a, x) => a + x.pol.SS, 0), maxTotal: calc.reduce((a, x) => a + x.pol.objetivo, 0),
+    return { ns, z: zDeNS(ns / 100), margen: margenVentas(S, P, ns).propuesta, ssTotal: calc.reduce((a, x) => a + x.pol.SS, 0), maxTotal: calc.reduce((a, x) => a + x.pol.objetivo, 0),
       costoPropuesta: r.tot.propuesta.total, costoActual: r.tot.actual.total, valorProm: r.tot.valorPromPropuesta,
       otifPropuesta: r.tot.otifPropuesta, faltaPropuesta: r.tot.faltaPropuesta };
   });
   const cumple = res.curvaServicio.filter((c) => c.faltaPropuesta === 0);
   res.nsMinimoCompleto = cumple.length ? cumple.reduce((m, c) => (c.costoPropuesta < m.costoPropuesta ? c : m)) : null;
-  res.equilibrioOrden = equilibrio(S, P, variacion, nsUsado, "costo_orden", 0, 1000);
+  res.equilibrioOrden = equilibrio(S, P, variacion, nsCalc, "costo_orden", 0, 1000);
+  res.margen = margenVentas(S, P, nsCalc);
   res.supuestos = supuestosActivos(P, S);
   res.conclusion = conclusion(res);
   return res;
 }
 
+// ns: un nivel de servicio único (número) o una función código → nivel (por clase ABC).
 function calcular(S, P, variacion, ns) {
   const f = 1 + variacion / 100;
+  const nsDe = typeof ns === "function" ? ns : () => ns;
   const filas = S.productos.map((prod) => {
     const simA = simularActual(prod, f);
     const actual = costosDiarios(prod, P, simA.stock, simA.falta);
-    const pol = politica(prod, P, { f, ns, L: S.L });
+    const pol = politica(prod, P, { f, ns: nsDe(prod.codigo), L: S.L });
     const simP = simularPropuesta(prod, pol, f);
     const prop = costoPropuesta(pol, P, S.L, actual, simP.unidadesFaltantes);
     const stockFin = simA.stock[S.L - 1];
@@ -298,7 +314,7 @@ function calcular(S, P, variacion, ns) {
     else if (pol.sinDemanda) riesgo = { nivel: "sin_demanda", t: "Sin demanda", detalle: "Sin ventas en el período: no hay base para estimar el riesgo." };
     else if (simP.unidadesFaltantes > 0) riesgo = { nivel: "alto", t: "Alto", detalle: `En la simulación faltaron ${simP.unidadesFaltantes} un. en ${simP.lineas - simP.lineasOk} de ${simP.lineas} líneas.` };
     else if (pol.bajaConfianza) riesgo = { nivel: "incierto", t: "Sin quiebre, baja confianza", detalle: `La simulación entregó todo, pero σ es de baja confianza: ${pol.motivosConf.join(" y ")}.` };
-    else riesgo = { nivel: "bajo", t: "Bajo", detalle: `Sin faltantes en la simulación. Probabilidad teórica de quiebre por ciclo: ${r2((1 - ns / 100) * 100)} %.` };
+    else riesgo = { nivel: "bajo", t: "Bajo", detalle: `Sin faltantes en la simulación. Probabilidad teórica de quiebre por ciclo: ${r2((1 - pol.ns / 100) * 100)} %.` };
     const reponer = pol.calculable && !pol.sinDemanda && stockFin <= pol.ROP;
     return { prod, simA, actual, pol, simP, prop, stockFin, cobertura, riesgo, reponer };
   });
@@ -339,6 +355,33 @@ function agrupar(S, res, gran) {
     grupos.push(g);
   }
   return grupos;
+}
+
+// Margen ante más ventas: mayor aumento (de 5 en 5 %, hasta +300 %) que cada política aguanta sin faltantes,
+// sin recalcularla: la propuesta queda con el SS, el ROP y el lote calculados con las ventas registradas,
+// y la actual repite sus recepciones registradas. Responde «¿hasta cuánto pueden subir las ventas antes de que falte?».
+function margenVentas(S, P, ns) {
+  const nsDe = typeof ns === "function" ? ns : () => ns;
+  const pols = S.productos.map((prod) => politica(prod, P, { f: 1, ns: nsDe(prod.codigo), L: S.L }));
+  const sim = {
+    actual: (f) => S.productos.map((prod) => simularActual(prod, f)),
+    propuesta: (f) => S.productos.map((prod, i) => simularPropuesta(prod, pols[i], f)),
+  };
+  const out = {};
+  for (const k of ["actual", "propuesta"]) {
+    let ultimoOk = null;
+    for (let v = 0; v <= 300; v += 5) {
+      const r = sim[k](1 + v / 100);
+      const falta = r.reduce((a, x) => a + x.unidadesFaltantes, 0);
+      if (falta > 0) {
+        const lin = r.reduce((a, x) => a + x.lineas, 0), ok = r.reduce((a, x) => a + x.lineasOk, 0);
+        out[k] = { hasta: ultimoOk, falla: v, falta, otif: lin ? ok / lin : null }; break;
+      }
+      ultimoOk = v;
+    }
+    if (!out[k]) out[k] = { hasta: 300, falla: null };
+  }
+  return out;
 }
 
 // Valor de un parámetro global en el que la propuesta y la situación actual cuestan lo mismo
