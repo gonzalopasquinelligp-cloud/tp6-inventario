@@ -1,22 +1,22 @@
 // Arranque, sesión, navegación y diseño general.
-import { sb, configurado, estado, cargarPerfil, cargarMaestros, puede, ahoraContable } from "./api.js?v=202610241519";
-import { esc, aviso, ICON, fechaHora, modal } from "./ui.js?v=202610241519";
+import { sb, configurado, estado, cargarPerfil, cargarMaestros, puede, ahoraContable } from "./api.js?v=202610241523";
+import { esc, aviso, ICON, fechaHora, modal } from "./ui.js?v=202610241523";
 
 // Nombre visible de la app. Se puede cambiar en config.js con: marca: { nombre: "…", subtitulo: "…", sigla: "…" }
 const MARCA = { nombre: "Inventario", subtitulo: "Gestión de depósito", sigla: "IN", ...(window.TP6_CONFIG?.marca || {}) };
 
 const RUTAS = [
-  { id: "inicio", t: "Inicio", icon: "inicio", rol: "operario", mod: () => import("./inicio.js?v=202610241519") },
-  { id: "consulta", t: "Consultar stock", icon: "buscar", rol: "operario", mod: () => import("./consulta.js?v=202610241519") },
-  { id: "ingreso", t: "Ingreso de mercadería", icon: "ingreso", rol: "operario", mod: () => import("./movimiento.js?v=202610241519"), grupo: "Operación" },
-  { id: "egreso", t: "Egreso por venta", icon: "egreso", rol: "operario", mod: () => import("./movimiento.js?v=202610241519") },
-  { id: "retorno", t: "Retorno de venta", icon: "ingreso", rol: "operario", mod: () => import("./movimiento.js?v=202610241519") },
-  { id: "conteo", t: "Conteo cíclico", icon: "conteo", rol: "operario", mod: () => import("./conteo.js?v=202610241519") },
-  { id: "conciliacion", t: "Conciliación", icon: "conciliar", rol: "operario", mod: () => import("./conciliacion.js?v=202610241519"), grupo: "Control" },
-  { id: "informes", t: "Informes", icon: "informe", rol: "operario", mod: () => import("./informes.js?v=202610241519") },
-  { id: "costos", t: "Costo y servicio", icon: "costo", rol: "supervisor", mod: () => import("./costos.js?v=202610241519") },
-  { id: "sync", t: "Google Sheets", icon: "sync", rol: "operario", mod: () => import("./sync.js?v=202610241519") },
-  { id: "admin", t: "Administración", icon: "admin", rol: "administrador", mod: () => import("./admin.js?v=202610241519"), grupo: "Sistema" },
+  { id: "inicio", t: "Inicio", icon: "inicio", rol: "operario", mod: () => import("./inicio.js?v=202610241523") },
+  { id: "consulta", t: "Consultar stock", icon: "buscar", rol: "operario", mod: () => import("./consulta.js?v=202610241523") },
+  { id: "ingreso", t: "Ingreso de mercadería", icon: "ingreso", rol: "operario", mod: () => import("./movimiento.js?v=202610241523"), grupo: "Operación" },
+  { id: "egreso", t: "Egreso por venta", icon: "egreso", rol: "operario", mod: () => import("./movimiento.js?v=202610241523") },
+  { id: "retorno", t: "Retorno de venta", icon: "ingreso", rol: "operario", mod: () => import("./movimiento.js?v=202610241523") },
+  { id: "conteo", t: "Conteo cíclico", icon: "conteo", rol: "operario", mod: () => import("./conteo.js?v=202610241523") },
+  { id: "conciliacion", t: "Conciliación", icon: "conciliar", rol: "operario", mod: () => import("./conciliacion.js?v=202610241523"), grupo: "Control" },
+  { id: "informes", t: "Informes", icon: "informe", rol: "operario", mod: () => import("./informes.js?v=202610241523") },
+  { id: "costos", t: "Costo y servicio", icon: "costo", rol: "supervisor", mod: () => import("./costos.js?v=202610241523") },
+  { id: "sync", t: "Google Sheets", icon: "sync", rol: "operario", mod: () => import("./sync.js?v=202610241523") },
+  { id: "admin", t: "Administración", icon: "admin", rol: "administrador", mod: () => import("./admin.js?v=202610241523"), grupo: "Sistema" },
 ];
 const MOVIL = ["inicio", "consulta", "conteo", "conciliacion"];
 

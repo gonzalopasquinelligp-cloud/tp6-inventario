@@ -1,8 +1,8 @@
 // Costo y servicio: tablero para decidir si se puede bajar el costo del inventario sin perder nivel de servicio.
 // Los datos vienen del servidor (analisis_datos); los cálculos están en modelo.js con sus fórmulas a la vista.
-import { rpc, puede, leer } from "./api.js?v=202610241519";
-import { esc, num, aviso, ICON, tabla, pedir, toast, descargarCSV, usd, dec, pct, origen, fechaHora, TZ } from "./ui.js?v=202610241519";
-import { analizar, zDeNS, CATEGORIAS, MOTIVOS } from "./modelo.js?v=202610241519";
+import { rpc, puede, leer } from "./api.js?v=202610241523";
+import { esc, num, aviso, ICON, tabla, pedir, toast, descargarCSV, usd, dec, pct, origen, fechaHora, TZ } from "./ui.js?v=202610241523";
+import { analizar, zDeNS, CATEGORIAS, MOTIVOS } from "./modelo.js?v=202610241523";
 
 const fCorta = (iso) => { const [, m, d] = iso.split("-"); return `${d}/${m}`; };
 const fLarga = (iso) => iso.split("-").reverse().join("/");
@@ -267,18 +267,18 @@ function pintarMetas(res) {
     : `<span class="est est-no"><b aria-hidden="true">✕</b> ${x.soloHoy ? "Hoy no cumple" : "La propuesta no cumple"}</span>`);
   const evaluables = lista.filter((x) => x.ok !== null), ok = evaluables.filter((x) => x.ok).length;
   const linea = estadoVista.el.querySelector("#resp-metas");
-  if (linea) linea.innerHTML = evaluables.length ? `<b>Metas al ${plazoTxt.replace(/ \(.*/, "")}:</b> ${ok} de ${lista.length} se cumplen${evaluables.length < lista.length ? ` (${lista.length - evaluables.length} sin dato o sin meta)` : ""}. <a href="#b-metas">Ver objetivos e indicadores</a>` : "";
+  if (linea) linea.innerHTML = evaluables.length ? `<b>Metas al ${plazoTxt.replace(/ \(.*/, "")}:</b> ${ok} de ${lista.length} se cumplen${evaluables.length < lista.length ? ` (${lista.length - evaluables.length} sin dato o sin meta)` : ""}. <a href="#b-metas">Ver indicadores</a>` : "";
   estadoVista.el.querySelector("#b-metas").innerHTML = `<div class="bloque-cab"><h2>Objetivos e indicadores</h2>
-      <p class="bloque-sub">Cada indicador tiene meta, forma de medirse y fecha límite: ${plazoTxt} ${origen(plazo.origen, plazo.razon)}. Responsable: supervisor de depósito. Se mide en el período elegido; para seguirlo, elegí períodos de 7 días.</p></div>
+      <p class="bloque-sub">Fecha límite: ${plazoTxt} ${origen(plazo.origen, plazo.razon)}. Responsable: supervisor de depósito.</p></div>
     <div class="metas">${lista.map((x) => `<article class="meta">
       <div class="meta-cab"><h3>${x.t}</h3>${estado(x)}</div>
-      <p class="meta-obj">Meta: <b>${x.metaTxt}</b> al ${plazoTxt.replace(/ \(.*/, "")} ${origen(x.meta.origen, x.meta.razon)}</p>
+      <p class="meta-obj">Meta: <b>${x.metaTxt}</b> ${origen(x.meta.origen, x.meta.razon)}</p>
       <dl class="meta-val"><div><dt>Hoy</dt><dd>${x.hoy}</dd></div><div><dt>Propuesta</dt><dd>${x.prop}</dd></div></dl>
-      <details class="traza"><summary>Ficha SMART</summary><dl class="smart">
-        <dt>Específico</dt><dd>${esc(x.S)}</dd><dt>Medible</dt><dd>${esc(x.M)}</dd><dt>Alcanzable</dt><dd>${esc(x.A)}</dd>
-        <dt>Relevante</dt><dd>${esc(x.R)}</dd><dt>Con plazo</dt><dd>Al ${esc(plazoTxt)}. Se mide en cada período del tablero.</dd></dl></details>
+      <details class="traza"><summary>Cómo se mide</summary><dl class="smart">
+        <dt>Qué mide</dt><dd>${esc(x.S)}</dd><dt>Cálculo</dt><dd>${esc(x.M)}</dd><dt>Por qué es alcanzable</dt><dd>${esc(x.A)}</dd>
+        <dt>Por qué importa</dt><dd>${esc(x.R)}</dd></dl></details>
     </article>`).join("")}</div>
-    ${lista.some((x) => x.meta.origen === "faltante") || plazo.origen === "faltante" ? `<p class="g-nota">Hay metas sin cargar. Las carga el administrador en «Parámetros y supuestos», grupo «Metas de los indicadores».</p>` : ""}`;
+    ${lista.some((x) => x.meta.origen === "faltante") || plazo.origen === "faltante" ? `<p class="g-nota">Hay metas sin cargar: el administrador las carga en «Parámetros y supuestos».</p>` : ""}`;
   estadoVista.el.querySelector("#resp-metas a")?.addEventListener("click", (e) => { e.preventDefault(); estadoVista.el.querySelector("#b-metas").scrollIntoView({ block: "start" }); });
 }
 
@@ -367,7 +367,7 @@ function pintarGrafico(res) {
 
   const faltas = g.filter((p) => p.lP > p.okP);
   b.innerHTML = `<div class="bloque-cab"><h2>Día por día: ventas, entregas y costo</h2>
-      <p class="bloque-sub">Las tres franjas comparten las fechas: leé una columna de arriba abajo. ${movil ? "Tocá" : "Pasá el cursor o tocá"} una fecha para ver los valores${movil ? "" : "; con el teclado, flechas izquierda y derecha"}.</p></div>
+      <p class="bloque-sub">${movil ? "Tocá" : "Pasá el cursor por"} una fecha para ver sus valores.</p></div>
     <div class="leyenda-g" aria-hidden="true"><span><i class="sw sw-ventas"></i>Ventas</span><span><i class="sw-l sw-l-hoy"></i>Hoy</span><span><i class="sw-l sw-l-prop"></i>Propuesta</span>${faltas.length ? `<span><i class="sw-falta"></i>Día con faltante (propuesta)</span>` : ""}</div>
     <div class="graficos" id="graficos" tabindex="0" role="group" aria-label="Gráfico de ventas, entregas y costo por fecha. Usá las flechas para recorrer las fechas; los datos están también en la tabla de abajo.">${s}<div class="g-tip" id="g-tip" role="status" hidden></div></div>
     ${faltas.length ? `<p class="g-nota"><b>La propuesta no alcanza a entregar todo</b> en ${faltas.map((p) => p.dias === 1 ? fCorta(p.desde) : `${fCorta(p.desde)}–${fCorta(p.hasta)}`).join(", ")}: ${num(res.tot.faltaPropuesta)} un. sin entregar en el período.</p>` : ""}
@@ -431,7 +431,7 @@ function pintarGrafico(res) {
 function pintarServicio(res) {
   const b = estadoVista.el.querySelector("#b-servicio"), m = res.nsMinimoCompleto;
   b.innerHTML = `<div class="bloque-cab"><h2>Nivel de servicio: cuánto cuesta entregar todo</h2>
-      <p class="bloque-sub">Cada fila recalcula la propuesta con otro nivel de servicio: cambia z y con él el stock de seguridad, el punto de pedido y el máximo de cada producto.${res.variacion ? ` Ventas ${signoVar(res.variacion)}.` : ""} Tocá «Usar» para ver ese nivel en todo el tablero.</p></div>
+      <p class="bloque-sub">Cada nivel cambia z y, con él, el stock de seguridad, el punto de pedido y el máximo de cada producto.${res.variacion ? ` Ventas ${signoVar(res.variacion)}.` : ""}</p></div>
     ${m ? `<p class="serv-clave"><b>${dec(m.ns, 1)}\u00a0% es el nivel más bajo que entrega el 100\u00a0%</b> en la simulación del período: cuesta ${usd(m.costoPropuesta)} contra ${usd(m.costoActual)} de hoy. La prueba usa los mismos ${res.series.L} días con los que se calcula el stock de seguridad: con otras ventas un nivel bajo puede quedarse corto.</p>`
       : `<p class="serv-clave"><b>Ningún nivel hasta 99,9\u00a0% entrega el 100\u00a0%</b> en la simulación: la propuesta deja unidades sin entregar aun con el máximo stock de seguridad.</p>`}
     ${tabla([
@@ -444,7 +444,7 @@ function pintarServicio(res) {
       { t: "Stock de seguridad, un.", num: true, html: (c) => `<span title="Suma de SS = z × σ × √plazo de los productos con ventas">${num(c.ssTotal)}</span>` },
       { t: "Máximo, un.", num: true, html: (c) => `<span title="Suma de SS + Q de los productos con ventas">${num(c.maxTotal)}</span>` },
     ], res.curvaServicio, { claseFila: (c) => (c.ns === res.ns ? "fila-actual" : "") })}
-    <p class="g-nota">El nivel de servicio es la probabilidad de no quedarse sin stock mientras llega un pedido. 100 % no se puede calcular con esta fórmula (z sería infinito): la meta de entregar todo se mide con el OTIF simulado, que tiene que dar 100 % y 0 unidades faltantes.</p>`;
+    <p class="g-nota">100 % no se puede calcular: z sería infinito. La meta de entregar todo se controla con el OTIF simulado.</p>`;
   b.querySelectorAll("[data-ns]").forEach((btn) => btn.addEventListener("click", () => {
     const v = Number(btn.dataset.ns), el = estadoVista.el;
     estadoVista.ns = v; el.querySelector("#s-ns").value = el.querySelector("#s-ns-r").value = v; pintar();
