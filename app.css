@@ -344,6 +344,25 @@ td .nota { font-size: .78rem; color: var(--texto-2); margin-top: 3px; max-width:
 
 .serv-clave { margin: 0 0 12px; font-size: .98rem; }
 
+/* Objetivos e indicadores */
+.resp-metas { margin: -4px 0 14px; font-size: .95rem; }
+.metas { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.meta { border: 1px solid var(--borde); border-radius: var(--radio-chico); padding: 14px 16px 6px; background: var(--panel-2); min-width: 0; }
+.meta-cab { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
+.meta-cab h3 { margin: 0; font-size: 1rem; }
+.meta-obj { margin: 6px 0 8px; font-size: .9rem; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.meta-val { display: flex; gap: 28px; margin: 0; flex-wrap: wrap; }
+.meta-val dt { font-size: .8rem; color: var(--texto-2); }
+.meta-val dd { margin: 0; font-weight: 700; font-size: 1.05rem; }
+.est { display: inline-flex; gap: 6px; align-items: center; padding: 2px 9px; border-radius: 4px; font-size: .82rem; font-weight: 700; white-space: nowrap; }
+.est-ok { background: var(--ok-suave); color: var(--ok); }
+.est-no { background: var(--error-suave); color: var(--error); }
+.est-nd { background: var(--gris-suave); color: var(--texto-2); }
+.smart { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; margin: 4px 0 8px; font-size: .86rem; }
+.smart dt { font-weight: 700; }
+.smart dd { margin: 0; color: var(--texto-2); }
+@media (max-width: 760px) { .metas { grid-template-columns: minmax(0, 1fr); } .smart { grid-template-columns: minmax(0, 1fr); } .smart dd { margin-bottom: 6px; } }
+
 /* En qué se va el costo */
 .cb-item { margin-bottom: 12px; }
 .cb-nombre { font-size: .88rem; font-weight: 600; margin-bottom: 3px; }

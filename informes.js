@@ -1,6 +1,6 @@
 // Informes: disponibilidad, historial de movimientos, conteos, diferencias, trimestral y conteo histórico del 14/10.
-import { rpc, leer, estado } from "./api.js?v=202610241513";
-import { esc, num, signo, claseSigno, aviso, ICON, fecha, fechaHora, tabla, chip, CATEGORIAS, ESTADOS_REV, descargarCSV, TZ } from "./ui.js?v=202610241513";
+import { rpc, leer, estado } from "./api.js?v=202610241519";
+import { esc, num, signo, claseSigno, aviso, ICON, fecha, fechaHora, tabla, chip, CATEGORIAS, ESTADOS_REV, descargarCSV, TZ } from "./ui.js?v=202610241519";
 
 const PESTANAS = [
   ["disp", "Disponibilidad"], ["movs", "Movimientos"], ["conteos", "Conteos"], ["difs", "Diferencias"], ["trim", "Trimestral"], ["caso", "Conteo 14/10"],

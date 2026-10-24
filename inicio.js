@@ -1,6 +1,6 @@
-import { leer, puede, estado } from "./api.js?v=202610241513";
-import { esc, num, signo, claseSigno, fechaHora, ICON, tabla, chip, ESTADOS_JORNADA } from "./ui.js?v=202610241513";
-import { rackHTML } from "./componentes.js?v=202610241513";
+import { leer, puede, estado } from "./api.js?v=202610241519";
+import { esc, num, signo, claseSigno, fechaHora, ICON, tabla, chip, ESTADOS_JORNADA } from "./ui.js?v=202610241519";
+import { rackHTML } from "./componentes.js?v=202610241519";
 
 export async function render(el) {
   const [pos, jornadas, sync, movs, pendientes] = await Promise.all([

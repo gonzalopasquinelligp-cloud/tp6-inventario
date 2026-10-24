@@ -1,8 +1,8 @@
 // Costo y servicio: tablero para decidir si se puede bajar el costo del inventario sin perder nivel de servicio.
 // Los datos vienen del servidor (analisis_datos); los cálculos están en modelo.js con sus fórmulas a la vista.
-import { rpc, puede } from "./api.js?v=202610241513";
-import { esc, num, aviso, ICON, tabla, pedir, toast, descargarCSV, usd, dec, pct, origen, fechaHora } from "./ui.js?v=202610241513";
-import { analizar, zDeNS, CATEGORIAS, MOTIVOS } from "./modelo.js?v=202610241513";
+import { rpc, puede, leer } from "./api.js?v=202610241519";
+import { esc, num, aviso, ICON, tabla, pedir, toast, descargarCSV, usd, dec, pct, origen, fechaHora, TZ } from "./ui.js?v=202610241519";
+import { analizar, zDeNS, CATEGORIAS, MOTIVOS } from "./modelo.js?v=202610241519";
 
 const fCorta = (iso) => { const [, m, d] = iso.split("-"); return `${d}/${m}`; };
 const fLarga = (iso) => iso.split("-").reverse().join("/");
@@ -94,6 +94,8 @@ async function cargar() {
   }
   const d = s.datos;
   s.desde = d.desde; s.hasta = d.hasta;
+  // Exactitud de inventario: registros de las jornadas de conteo (si no se pueden leer, el indicador queda sin dato)
+  try { s.difs = await leer("v_diferencias", (q) => q, "jornada,jornada_tipo,fecha_corte,diferencia"); } catch { s.difs = null; }
   for (const id of ["p-desde", "p-hasta"]) { const inp = el.querySelector("#" + id); inp.min = d.fecha_min_datos; inp.max = d.fecha_max_datos; }
   el.querySelector("#p-desde").value = d.desde; el.querySelector("#p-hasta").value = d.hasta;
   el.querySelector("#p-gran").value = s.gran;
@@ -107,6 +109,7 @@ async function cargar() {
 function armarCuerpo() {
   estadoVista.el.querySelector("#cuerpo").innerHTML = `
     <section class="respuesta" id="respuesta" aria-live="polite"></section>
+    <section class="bloque" id="b-metas"></section>
     <section class="bloque" id="b-grafico"></section>
     <section class="bloque" id="b-servicio"></section>
     <div class="dos-col">
@@ -133,6 +136,7 @@ function pintar() {
   el.querySelector("#cs-resumen-txt").innerHTML = `<b>${fCorta(res.series.dias[0])}–${fCorta(res.series.dias[res.series.L - 1])}</b>`
     + ` · ventas ${signoVar(res.variacion)} · servicio ${dec(res.ns, 1)} %`;
   pintarRespuesta(res);
+  pintarMetas(res);
   pintarGrafico(res);
   pintarServicio(res);
   pintarCategorias(res);
@@ -188,6 +192,7 @@ function pintarRespuesta(res) {
       ${figura("prop", "Unidades que faltarían", `${num(t.faltaPropuesta)} un.`, `${num(t.faltaActual)} un.`, delta(t.faltaActual, t.faltaPropuesta, true, (x) => `${num(x)} un.`),
         "Unidades pedidas que no se habrían podido entregar por falta de stock, en la simulación del período.")}
     </div>
+    <p class="resp-metas" id="resp-metas"></p>
     <div class="resp-pie">
       <div><h3>Por qué</h3><ul class="resp-porque">${porque.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>
       ${baja ? `<p class="resp-aviso"><span class="conf conf-baja">Baja confianza</span> ${baja} de ${conVentas} productos vendieron pocos días: tomá el resultado como orientativo. <a href="#sec-limites" id="ir-limites">Ver límites del resultado</a></p>` : ""}
@@ -195,6 +200,86 @@ function pintarRespuesta(res) {
   estadoVista.el.querySelector("#ir-limites")?.addEventListener("click", (e) => {
     e.preventDefault(); const sec = estadoVista.el.querySelector("#sec-limites"); sec.open = true; sec.scrollIntoView({ block: "start" });
   });
+}
+
+// ---------------------------------------------------------------------
+// Objetivos e indicadores (SMART): meta, plazo, hoy, propuesta y ficha de cada uno
+// ---------------------------------------------------------------------
+const diaLocal = (v) => new Date(v).toLocaleDateString("sv-SE", { timeZone: TZ });
+const fechaMeta = (v) => { const t = String(Math.round(v)); return `${t.slice(6, 8)}/${t.slice(4, 6)}/${t.slice(0, 4)}`; };
+
+function exactitud(difs, hasta) {
+  if (!difs) return null;
+  const porJ = {};
+  for (const d of difs) if (diaLocal(d.fecha_corte) <= hasta) (porJ[d.jornada] ||= { jornada: d.jornada, corte: d.fecha_corte, lineas: 0, ok: 0, unidades: 0 });
+  for (const d of difs) { const j = porJ[d.jornada]; if (!j) continue; j.lineas++; if (d.diferencia === 0) j.ok++; j.unidades += Math.abs(d.diferencia); }
+  const ult = Object.values(porJ).sort((a, b) => (a.corte < b.corte ? 1 : -1))[0];
+  return ult ? { ...ult, valor: ult.ok / ult.lineas } : null;
+}
+
+function indicadores(res) {
+  const P = res.P, t = res.tot, L = res.series.L, hasta = res.series.dias[L - 1];
+  const meta = (k) => P.leer(k);
+  const plazo = meta("meta_plazo");
+  const ex = exactitud(estadoVista.difs, hasta);
+  const red = (a, b) => (a > 0 ? (a - b) / a * 100 : null);
+  const ult = res.curvaServicio[res.curvaServicio.length - 1], m = res.nsMinimoCompleto;
+  const periodo = `${fLarga(res.series.dias[0])} al ${fLarga(hasta)}`;
+  const cumple = (v, mt, mayor) => (mt.valor === null || v === null ? null : mayor ? v >= mt.valor - 1e-9 : v <= mt.valor + 1e-9);
+  const mOtif = meta("meta_otif"), mFal = meta("meta_faltantes"), mCos = meta("meta_reduccion_costo"), mEx = meta("meta_exactitud");
+  const redProp = red(t.actual.total, t.propuesta.total);
+  return { plazo, ex, lista: [
+    { id: "otif", t: "Entregas completas (OTIF)", meta: mOtif, metaTxt: mOtif.valor === null ? "sin meta" : `≥ ${dec(mOtif.valor, 1)}\u00a0%`,
+      hoy: pct(t.otifActual), prop: pct(t.otifPropuesta), ok: cumple(t.otifPropuesta === null ? null : t.otifPropuesta * 100, mOtif, true),
+      S: "Porcentaje de líneas de venta entregadas completas y el mismo día en que se pidieron, en todos los productos.",
+      M: `OTIF = líneas entregadas completas ÷ líneas de venta del período (${t.lineas} líneas, ${periodo}). Simulado: cada retiro por venta registrado es una línea de pedido.`,
+      A: `En la simulación la propuesta entrega ${pct(t.otifPropuesta)} con nivel de servicio ${dec(res.ns, 1)}\u00a0%. ${m ? `El nivel más bajo que entrega todo es ${dec(m.ns, 1)}\u00a0%.` : "Ningún nivel hasta 99,9 % entrega todo."}`,
+      R: "Es la condición de la pregunta: bajar el costo sin dejar de entregar." },
+    { id: "faltantes", t: "Unidades no entregadas", meta: mFal, metaTxt: mFal.valor === null ? "sin meta" : `≤ ${num(mFal.valor)}\u00a0un.`,
+      hoy: `${num(t.faltaActual)}\u00a0un.`, prop: `${num(t.faltaPropuesta)}\u00a0un.`, ok: cumple(t.faltaPropuesta, mFal, false),
+      S: "Unidades pedidas que no se pudieron entregar por falta de stock, sumando todos los productos.",
+      M: `Suma de unidades pedidas y no entregadas en la simulación del período (${periodo}).`,
+      A: `La propuesta deja ${num(t.faltaPropuesta)} un. sin entregar en el período; la situación actual, ${num(t.faltaActual)} un.`,
+      R: "Cada unidad no entregada es una venta perdida. Su costo no está cargado, por eso se controla en unidades." },
+    { id: "costo", t: "Baja del costo de inventario", meta: mCos, metaTxt: mCos.valor === null ? "sin meta" : `≥ ${dec(mCos.valor, 1)}\u00a0% menos que hoy`,
+      hoy: usd(t.actual.total), prop: `${usd(t.propuesta.total)} (${redProp === null ? "—" : `${redProp >= 0 ? "−" : "+"}${dec(Math.abs(redProp), 1)}\u00a0%`})`, ok: cumple(redProp, mCos, true),
+      S: "Costo total del inventario: capital inmovilizado, almacenamiento, órdenes de compra y devoluciones, en USD.",
+      M: `Baja = (costo de hoy − costo de la propuesta) ÷ costo de hoy, mismo período (${periodo}, ${L} días). Línea de base: ${usd(t.actual.total)}.`,
+      A: `La simulación da ${redProp === null ? "—" : `${dec(redProp, 1)}\u00a0%`} con nivel de servicio ${dec(res.ns, 1)}\u00a0% y ${dec(red(ult.costoActual, ult.costoPropuesta), 1)}\u00a0% con ${dec(ult.ns, 1)}\u00a0%. Depende de supuestos (costos unitarios, costo por orden).`,
+      R: "Es el costo que se busca bajar: plata inmovilizada y gastos de reposición." },
+    { id: "exactitud", t: "Exactitud de inventario", meta: mEx, metaTxt: mEx.valor === null ? "sin meta" : `≥ ${dec(mEx.valor, 1)}\u00a0% de registros`,
+      hoy: ex ? pct(ex.valor) : "sin conteo", prop: "no depende de la política", ok: ex ? cumple(ex.valor * 100, mEx, true) : null, soloHoy: true,
+      S: "Porcentaje de registros (posición + producto + lote) en los que lo contado coincide con el sistema.",
+      M: ex ? `Exactitud = registros sin diferencia ÷ registros contados en el último conteo hasta el ${fLarga(hasta)}: ${ex.jornada}, ${ex.ok} de ${ex.lineas} registros (${num(ex.unidades)} un. de diferencia en valor absoluto).` : "Registros sin diferencia ÷ registros contados en el último conteo del período. No hay conteos hasta esa fecha.",
+      A: "Sin dato propio de la empresa. Se alcanza con conteos cíclicos frecuentes y ajustes aprobados; revisar la meta con el primer mes de conteos.",
+      R: "La política de stock usa el stock del sistema: si no coincide con lo físico, el punto de pedido falla y aparecen faltantes." },
+  ] };
+}
+
+function pintarMetas(res) {
+  const { plazo, lista } = indicadores(res);
+  const hoy = diaLocal(new Date());
+  const pz = plazo.valor === null ? null : String(Math.round(plazo.valor));
+  const quedan = pz ? Math.round((Date.parse(`${pz.slice(0, 4)}-${pz.slice(4, 6)}-${pz.slice(6, 8)}`) - Date.parse(hoy)) / 86400000) : null;
+  const plazoTxt = pz ? `${fechaMeta(plazo.valor)}${quedan >= 0 ? ` (quedan ${quedan} días)` : " (vencida)"}` : "sin fecha";
+  const estado = (x) => (x.ok === null ? `<span class="est est-nd">Sin dato o sin meta</span>`
+    : x.ok ? `<span class="est est-ok"><b aria-hidden="true">✓</b> ${x.soloHoy ? "Hoy cumple" : "La propuesta cumple"}</span>`
+    : `<span class="est est-no"><b aria-hidden="true">✕</b> ${x.soloHoy ? "Hoy no cumple" : "La propuesta no cumple"}</span>`);
+  const evaluables = lista.filter((x) => x.ok !== null), ok = evaluables.filter((x) => x.ok).length;
+  const linea = estadoVista.el.querySelector("#resp-metas");
+  if (linea) linea.innerHTML = evaluables.length ? `<b>Metas al ${plazoTxt.replace(/ \(.*/, "")}:</b> ${ok} de ${lista.length} se cumplen${evaluables.length < lista.length ? ` (${lista.length - evaluables.length} sin dato o sin meta)` : ""}. <a href="#b-metas">Ver objetivos e indicadores</a>` : "";
+  estadoVista.el.querySelector("#b-metas").innerHTML = `<div class="bloque-cab"><h2>Objetivos e indicadores</h2>
+      <p class="bloque-sub">Cada indicador tiene meta, forma de medirse y fecha límite: ${plazoTxt} ${origen(plazo.origen, plazo.razon)}. Responsable: supervisor de depósito. Se mide en el período elegido; para seguirlo, elegí períodos de 7 días.</p></div>
+    <div class="metas">${lista.map((x) => `<article class="meta">
+      <div class="meta-cab"><h3>${x.t}</h3>${estado(x)}</div>
+      <p class="meta-obj">Meta: <b>${x.metaTxt}</b> al ${plazoTxt.replace(/ \(.*/, "")} ${origen(x.meta.origen, x.meta.razon)}</p>
+      <dl class="meta-val"><div><dt>Hoy</dt><dd>${x.hoy}</dd></div><div><dt>Propuesta</dt><dd>${x.prop}</dd></div></dl>
+      <details class="traza"><summary>Ficha SMART</summary><dl class="smart">
+        <dt>Específico</dt><dd>${esc(x.S)}</dd><dt>Medible</dt><dd>${esc(x.M)}</dd><dt>Alcanzable</dt><dd>${esc(x.A)}</dd>
+        <dt>Relevante</dt><dd>${esc(x.R)}</dd><dt>Con plazo</dt><dd>Al ${esc(plazoTxt)}. Se mide en cada período del tablero.</dd></dl></details>
+    </article>`).join("")}</div>
+    ${lista.some((x) => x.meta.origen === "faltante") || plazo.origen === "faltante" ? `<p class="g-nota">Hay metas sin cargar. Las carga el administrador en «Parámetros y supuestos», grupo «Metas de los indicadores».</p>` : ""}`;
+  estadoVista.el.querySelector("#resp-metas a")?.addEventListener("click", (e) => { e.preventDefault(); estadoVista.el.querySelector("#b-metas").scrollIntoView({ block: "start" }); });
 }
 
 // ---------------------------------------------------------------------
@@ -423,6 +508,7 @@ function pintarLimites(res) {
       <li><b>Costo de hoy</b> = capital (stock del día × costo unitario × ${dec(P.v("tasa_capital"), 2)} % ÷ 365) + almacenamiento (igual con ${dec(P.v("tasa_almacenamiento"), 2)} %) + órdenes de compra (${usd(P.v("costo_orden"))} por recepción) + devoluciones (costo por evento + valor perdido según el motivo).</li>
       <li><b>Propuesta</b>: stock de seguridad SS = z × σ × √plazo; pedir cuando el stock baja a ROP = demanda diaria × plazo + SS; lote Q = máx(lote económico, lote mínimo); máximo = SS + Q. Su costo usa el stock promedio SS + Q ÷ 2 y la cantidad de pedidos (retiros ÷ Q).</li>
       <li><b>Entregas (OTIF)</b>: cada retiro por venta registrado es un pedido de ese día. Se entrega completo si hay stock; si no, falta. Hoy: con las recepciones registradas. Propuesta: arranca en el máximo y repone Q al llegar al punto de pedido; el pedido llega a los días del plazo.</li>
+      <li><b>Costo de compra</b> (demanda × costo unitario): no se suma porque es igual en las dos políticas; se compran las mismas unidades.</li>
       <li>Período: ${fLarga(res.series.dias[0])} al ${fLarga(res.series.dias[res.series.L - 1])} (${res.series.L} días). Fuente: stock inicial y movimientos registrados.</li>
     </ul>`;
 }
@@ -457,6 +543,9 @@ function pintarPolitica(res) {
       { t: "Retiros", num: true, html: (x) => `<span title="Suma de los retiros por venta del período${res.variacion ? ` × ${dec(res.f, 2)}` : ""}.">${dec(x.pol.demandaTotal, 1)}</span>` },
       { t: "Demanda por día", num: true, html: (x) => `<span title="d = retiros del período ÷ ${x.pol.n} días">${dec(x.pol.dbar, 2)}</span>` },
       { t: "σ por día", num: true, html: (x) => `<span title="Desvío estándar muestral de los retiros diarios (n = ${x.pol.n}, incluye días sin venta)">${dec(x.pol.sigma, 2)}</span>` },
+      { t: "Variabilidad (CV)", num: true, html: (x) => { const p = x.pol; if (p.sinDemanda || !p.dbar || p.sigma === null) return "—";
+          const cv = p.sigma ** 2 / p.dbar ** 2;
+          return `<span title="CV = σ² ÷ d² = ${dec(p.sigma, 2)}² ÷ ${dec(p.dbar, 2)}² = ${dec(cv, 2)}. Con CV menor a 0,2 alcanza un modelo determinístico; con 0,2 o más corresponde el probabilístico (stock de seguridad).">${dec(cv, 2)}</span><div class="nota">${cv < 0.2 ? "Determinístico" : "Probabilístico"}</div>`; } },
       { t: "Confianza", html: (x) => x.pol.sinDemanda ? `<span class="conf conf-nd">Sin ventas</span>`
           : x.pol.bajaConfianza ? `<span class="conf conf-baja" title="${esc(x.pol.motivosConf.join(" y "))}">Baja</span><div class="nota">${x.pol.diasVenta} de ${x.pol.n} días con venta</div>`
           : `<span class="conf conf-ok">Aceptable</span><div class="nota">${x.pol.diasVenta} de ${x.pol.n} días con venta</div>` },
@@ -471,6 +560,7 @@ function pintarPolitica(res) {
     ], filas)}
     <details class="traza"><summary>Cómo se calcula</summary><ul>
       <li><b>d y σ</b>: demanda diaria promedio y desvío estándar muestral de los retiros por venta de cada día del período (${res.series.L} días), incluidos los días sin venta. Baja confianza si hay menos de ${dec(P.v("min_periodos_confianza"), 0)} períodos ${origen(P.leer("min_periodos_confianza").origen)} o menos de ${dec(P.v("min_dias_venta_confianza"), 0)} días con venta ${origen(P.leer("min_dias_venta_confianza").origen, P.leer("min_dias_venta_confianza").razon)}.</li>
+      <li><b>Modelo</b>: cantidad fija con revisión continua: se pide un lote Q cada vez que el stock baja al punto de pedido. El período de revisión es 0 porque cada movimiento actualiza el stock al instante (LT = plazo de reposición). Se usa el modelo probabilístico cuando el coeficiente de variabilidad CV = σ² ÷ d² es 0,2 o más.</li>
       <li><b>Stock de seguridad</b>: SS = z × σ × √LT. Si se carga el desvío del plazo (σLT), se usa SS = z × √(LT × σ² + d² × σLT²). Se redondea hacia arriba.</li>
       <li><b>Punto de reorden</b>: ROP = d × LT + SS.</li>
       <li><b>Lote Q</b>: el mayor entre el lote económico EOQ = √(2 × D × S ÷ H) y el lote mínimo. D = demanda anual (d × 365), S = costo por orden, H = costo anual de mantener una unidad.</li>
@@ -585,7 +675,7 @@ function pintarDevoluciones(res) {
 // ---------------------------------------------------------------------
 // Parámetros y supuestos
 // ---------------------------------------------------------------------
-const GRUPOS = { financiero: "Financieros", operativo: "Operativos", calidad: "Calidad", quiebre: "Quiebre", servicio: "Servicio", confianza: "Confianza estadística", abastecimiento: "Abastecimiento" };
+const GRUPOS = { meta: "Metas de los indicadores", financiero: "Financieros", operativo: "Operativos", calidad: "Calidad", quiebre: "Quiebre", servicio: "Servicio", confianza: "Confianza estadística", abastecimiento: "Abastecimiento" };
 
 function pintarParametros(res) {
   const P = res.P, admin = puede("administrador");
@@ -593,7 +683,7 @@ function pintarParametros(res) {
   const porCat = {};
   for (const x of globales) (porCat[x.categoria] ||= []).push(x);
   const defsProd = Object.values(P.defs).filter((d) => d.ambito === "producto").sort((a, b) => a.orden - b.orden);
-  const valor = (x) => (x.valor === null ? `<span class="falta-valor">sin dato</span>` : `<b>${String(x.unidad).startsWith("USD") ? usd(x.valor).replace(/^USD\s/, "") : dec(x.valor, 2)}</b>`);
+  const valor = (x) => (x.valor === null ? `<span class="falta-valor">sin dato</span>` : `<b>${x.unidad === "fecha AAAAMMDD" ? fechaMeta(x.valor) : String(x.unidad).startsWith("USD") ? usd(x.valor).replace(/^USD\s/, "") : dec(x.valor, 2)}</b>`);
   const conteo = { supuesto: 0, faltante: 0, usuario: 0 };
   for (const x of globales) conteo[x.origen]++;
   for (const p of res.series.productos) for (const d of defsProd) conteo[P.leer(d.clave, p.codigo).origen]++;
