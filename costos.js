@@ -1,8 +1,8 @@
 // Costo y servicio: tablero para decidir si se puede bajar el costo del inventario sin perder nivel de servicio.
 // Los datos vienen del servidor (analisis_datos); los cálculos están en modelo.js con sus fórmulas a la vista.
-import { rpc, puede, leer } from "./api.js?v=202610241532";
-import { esc, num, aviso, ICON, tabla, pedir, toast, descargarCSV, usd, dec, pct, origen, fechaHora, TZ } from "./ui.js?v=202610241532";
-import { analizar, zDeNS, CATEGORIAS, MOTIVOS } from "./modelo.js?v=202610241532";
+import { rpc, puede, leer } from "./api.js?v=202610241541";
+import { esc, num, aviso, ICON, tabla, pedir, toast, descargarCSV, usd, dec, pct, origen, fechaHora, TZ } from "./ui.js?v=202610241541";
+import { analizar, zDeNS, CATEGORIAS, MOTIVOS } from "./modelo.js?v=202610241541";
 
 const fCorta = (iso) => { const [, m, d] = iso.split("-"); return `${d}/${m}`; };
 const fLarga = (iso) => iso.split("-").reverse().join("/");
