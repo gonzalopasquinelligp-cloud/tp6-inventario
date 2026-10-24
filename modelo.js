@@ -266,6 +266,17 @@ export function analizar(datos, { variacion = 0, ns = null, granularidad = "dia"
     return { variacion: v, costoActual: r.tot.actual.total, costoPropuesta: r.tot.propuesta.total,
       otifActual: r.tot.otifActual, otifPropuesta: r.tot.otifPropuesta, faltaActual: r.tot.faltaActual, faltaPropuesta: r.tot.faltaPropuesta };
   });
+  // Curva costo–servicio: la misma historia con cada nivel de servicio (SS, ROP y lote se recalculan con su z).
+  const niveles = [...new Set([80, 85, 90, 95, 97.5, 99, 99.5, 99.9, nsUsado])].sort((x, y) => x - y);
+  res.curvaServicio = niveles.map((ns) => {
+    const r = ns === nsUsado ? res : calcular(S, P, variacion, ns);
+    const calc = r.filas.filter((x) => x.pol.calculable && !x.pol.sinDemanda);
+    return { ns, z: zDeNS(ns / 100), ssTotal: calc.reduce((a, x) => a + x.pol.SS, 0), maxTotal: calc.reduce((a, x) => a + x.pol.objetivo, 0),
+      costoPropuesta: r.tot.propuesta.total, costoActual: r.tot.actual.total, valorProm: r.tot.valorPromPropuesta,
+      otifPropuesta: r.tot.otifPropuesta, faltaPropuesta: r.tot.faltaPropuesta };
+  });
+  const cumple = res.curvaServicio.filter((c) => c.faltaPropuesta === 0);
+  res.nsMinimoCompleto = cumple.length ? cumple.reduce((m, c) => (c.costoPropuesta < m.costoPropuesta ? c : m)) : null;
   res.equilibrioOrden = equilibrio(S, P, variacion, nsUsado, "costo_orden", 0, 1000);
   res.supuestos = supuestosActivos(P, S);
   res.conclusion = conclusion(res);

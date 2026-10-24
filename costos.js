@@ -1,8 +1,8 @@
 // Costo y servicio: tablero para decidir si se puede bajar el costo del inventario sin perder nivel de servicio.
 // Los datos vienen del servidor (analisis_datos); los cálculos están en modelo.js con sus fórmulas a la vista.
-import { rpc, puede } from "./api.js?v=202610241509";
-import { esc, num, aviso, ICON, tabla, pedir, toast, descargarCSV, usd, dec, pct, origen, fechaHora } from "./ui.js?v=202610241509";
-import { analizar, zDeNS, CATEGORIAS, MOTIVOS } from "./modelo.js?v=202610241509";
+import { rpc, puede } from "./api.js?v=202610241513";
+import { esc, num, aviso, ICON, tabla, pedir, toast, descargarCSV, usd, dec, pct, origen, fechaHora } from "./ui.js?v=202610241513";
+import { analizar, zDeNS, CATEGORIAS, MOTIVOS } from "./modelo.js?v=202610241513";
 
 const fCorta = (iso) => { const [, m, d] = iso.split("-"); return `${d}/${m}`; };
 const fLarga = (iso) => iso.split("-").reverse().join("/");
@@ -34,7 +34,7 @@ export async function render(el, { params }) {
             <div class="sim-fila"><input id="s-var-r" type="range" min="-50" max="100" step="5" aria-label="Variación de ventas, deslizador">
             <span class="sim-num"><input id="s-var" type="number" min="-90" max="300" step="1" inputmode="numeric"> %</span></div></div>
           <div class="cs-campo sim-campo"><label for="s-ns">Nivel de servicio buscado</label>
-            <div class="sim-fila"><input id="s-ns-r" type="range" min="80" max="99.5" step="0.5" aria-label="Nivel de servicio, deslizador">
+            <div class="sim-fila"><input id="s-ns-r" type="range" min="80" max="99.9" step="0.1" aria-label="Nivel de servicio, deslizador">
             <span class="sim-num"><input id="s-ns" type="number" min="50" max="99.9" step="0.1" inputmode="decimal"> %</span></div>
             <div class="ayuda" id="s-z"></div></div>
           <button class="btn" type="button" id="s-reset">Volver a lo guardado</button>
@@ -108,6 +108,7 @@ function armarCuerpo() {
   estadoVista.el.querySelector("#cuerpo").innerHTML = `
     <section class="respuesta" id="respuesta" aria-live="polite"></section>
     <section class="bloque" id="b-grafico"></section>
+    <section class="bloque" id="b-servicio"></section>
     <div class="dos-col">
       <section class="bloque" id="b-acciones"></section>
       <section class="bloque" id="b-categorias"></section>
@@ -133,6 +134,7 @@ function pintar() {
     + ` · ventas ${signoVar(res.variacion)} · servicio ${dec(res.ns, 1)} %`;
   pintarRespuesta(res);
   pintarGrafico(res);
+  pintarServicio(res);
   pintarCategorias(res);
   pintarAcciones(res);
   pintarPolitica(res);
@@ -168,6 +170,9 @@ function pintarRespuesta(res) {
   // Las conclusiones que más ayudan a decidir: qué explica la diferencia, qué pasa con el stock,
   // si depende del supuesto de costo por orden y cuánto margen hay ante más ventas.
   const d = c.detalle, porque = [...new Set([d[0], d[1], d[2], d[d.length - 1]].filter(Boolean))];
+  const m = res.nsMinimoCompleto;
+  porque.push(m ? `El nivel de servicio más bajo que entrega el 100 % en la simulación es ${dec(m.ns, 1)} %, con un costo de ${usd(m.costoPropuesta)}. Ver «Nivel de servicio».`
+    : "Ningún nivel de servicio hasta 99,9 % entrega el 100 % en la simulación. Ver «Nivel de servicio».");
   estadoVista.el.querySelector("#respuesta").innerHTML = `
     <p class="resp-pregunta">¿Se puede bajar el costo del inventario sin dejar de entregar?</p>
     <div class="ver-frase tono-${c.tono}">
@@ -333,6 +338,33 @@ function pintarGrafico(res) {
     if (paso === undefined) { if (e.key === "Escape") ocultar(); return; }
     e.preventDefault(); mostrar((estadoVista.sel ?? n - 1) + paso);
   });
+}
+
+// ---------------------------------------------------------------------
+// Nivel de servicio: costo y entregas en cada nivel (SS, ROP y lote vinculados)
+// ---------------------------------------------------------------------
+function pintarServicio(res) {
+  const b = estadoVista.el.querySelector("#b-servicio"), m = res.nsMinimoCompleto;
+  b.innerHTML = `<div class="bloque-cab"><h2>Nivel de servicio: cuánto cuesta entregar todo</h2>
+      <p class="bloque-sub">Cada fila recalcula la propuesta con otro nivel de servicio: cambia z y con él el stock de seguridad, el punto de pedido y el máximo de cada producto.${res.variacion ? ` Ventas ${signoVar(res.variacion)}.` : ""} Tocá «Usar» para ver ese nivel en todo el tablero.</p></div>
+    ${m ? `<p class="serv-clave"><b>${dec(m.ns, 1)}\u00a0% es el nivel más bajo que entrega el 100\u00a0%</b> en la simulación del período: cuesta ${usd(m.costoPropuesta)} contra ${usd(m.costoActual)} de hoy. La prueba usa los mismos ${res.series.L} días con los que se calcula el stock de seguridad: con otras ventas un nivel bajo puede quedarse corto.</p>`
+      : `<p class="serv-clave"><b>Ningún nivel hasta 99,9\u00a0% entrega el 100\u00a0%</b> en la simulación: la propuesta deja unidades sin entregar aun con el máximo stock de seguridad.</p>`}
+    ${tabla([
+      { t: "Nivel de servicio", html: (c) => `<b>${dec(c.ns, 1)}\u00a0%</b>${c === m ? ` <span class="chip ok">Más barato que entrega todo</span>` : ""}${c.ns === res.ns ? ` <span class="chip prim">En uso</span>` : ""}` },
+      { t: "Costo propuesta", num: true, html: (c) => `<span class="${c.costoPropuesta > c.costoActual ? "peor" : ""}" title="Costo en régimen del período con este nivel. Hoy: ${usd(c.costoActual)}">${usd(c.costoPropuesta)}</span>` },
+      { t: "Entregas (OTIF)", num: true, html: (c) => `<span class="${c.faltaPropuesta > 0 ? "peor" : ""}">${pct(c.otifPropuesta)}</span>` },
+      { t: "Faltan, un.", num: true, html: (c) => `<span class="${c.faltaPropuesta > 0 ? "peor" : ""}">${num(c.faltaPropuesta)}</span>` },
+      { t: "", html: (c) => (c.ns === res.ns ? "" : `<button class="btn chico" type="button" data-ns="${c.ns}">Usar</button>`) },
+      { t: "z", num: true, html: (c) => `<span title="z de la normal estándar para ${dec(c.ns, 1)} %">${dec(c.z, 3)}</span>` },
+      { t: "Stock de seguridad, un.", num: true, html: (c) => `<span title="Suma de SS = z × σ × √plazo de los productos con ventas">${num(c.ssTotal)}</span>` },
+      { t: "Máximo, un.", num: true, html: (c) => `<span title="Suma de SS + Q de los productos con ventas">${num(c.maxTotal)}</span>` },
+    ], res.curvaServicio, { claseFila: (c) => (c.ns === res.ns ? "fila-actual" : "") })}
+    <p class="g-nota">El nivel de servicio es la probabilidad de no quedarse sin stock mientras llega un pedido. 100 % no se puede calcular con esta fórmula (z sería infinito): la meta de entregar todo se mide con el OTIF simulado, que tiene que dar 100 % y 0 unidades faltantes.</p>`;
+  b.querySelectorAll("[data-ns]").forEach((btn) => btn.addEventListener("click", () => {
+    const v = Number(btn.dataset.ns), el = estadoVista.el;
+    estadoVista.ns = v; el.querySelector("#s-ns").value = el.querySelector("#s-ns-r").value = v; pintar();
+    el.querySelector("#b-servicio").scrollIntoView({ block: "start" });
+  }));
 }
 
 // ---------------------------------------------------------------------

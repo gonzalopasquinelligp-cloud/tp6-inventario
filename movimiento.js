@@ -1,9 +1,9 @@
 // Ingreso por OC, egreso por venta y retorno de venta (mismo circuito de 3 pasos).
-import { rpc, estado, producto } from "./api.js?v=202610241509";
-import { esc, num, aviso, ICON, nuevoId, fechaHora, toast } from "./ui.js?v=202610241509";
-import { escanear } from "./escaner.js?v=202610241509";
-import { seguirSync } from "./componentes.js?v=202610241509";
-import { MOTIVOS } from "./modelo.js?v=202610241509";
+import { rpc, estado, producto } from "./api.js?v=202610241513";
+import { esc, num, aviso, ICON, nuevoId, fechaHora, toast } from "./ui.js?v=202610241513";
+import { escanear } from "./escaner.js?v=202610241513";
+import { seguirSync } from "./componentes.js?v=202610241513";
+import { MOTIVOS } from "./modelo.js?v=202610241513";
 
 const CONF = {
   ingreso: { rpc: "registrar_ingreso", titulo: "Ingreso de mercadería", doc: "Orden de compra / documento", docPh: "Ej.: OC-2026-0154",
