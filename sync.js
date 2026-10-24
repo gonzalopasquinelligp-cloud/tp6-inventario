@@ -1,6 +1,6 @@
 // Estado de la transferencia automática a Google Sheets.
-import { rpc, leer, puede } from "./api.js?v=202610241523";
-import { esc, aviso, ICON, fechaHora, tabla, toast } from "./ui.js?v=202610241523";
+import { rpc, leer, puede } from "./api.js?v=202610241532";
+import { esc, aviso, ICON, fechaHora, tabla, toast } from "./ui.js?v=202610241532";
 
 let t = null;
 export function destruir() { clearInterval(t); }
@@ -16,9 +16,7 @@ export async function render(el) {
       <div class="panel"><div class="panel-cab"><h2>Transferencia a Google Sheets</h2>
         <div class="btns">${planilla && puede("supervisor") ? `<a class="btn chico" target="_blank" rel="noopener" href="${esc(planilla)}">Abrir planilla</a>` : ""}
         <button class="btn prim chico" id="ahora">${ICON.sync} Sincronizar ahora</button></div></div>
-        <p class="small muted">Cada operación válida se guarda primero en la base de datos (fuente principal) y queda en una cola.
-          Google Apps Script la recibe automáticamente —aviso inmediato y un control programado cada 5 minutos—, escribe la fila por su <b>ID estable</b>
-          (si ya existe la actualiza, nunca la duplica) y recién entonces la marca como sincronizada. Si Google Sheets falla, el registro no se pierde: queda pendiente y se reintenta.</p>
+        <p class="small muted">Cada operación se guarda primero en la base y queda en cola. La planilla la recibe al instante y, como respaldo, cada 5 minutos. Cada fila se identifica por su ID: si ya existe se actualiza, nunca se duplica. Si Google Sheets falla, el registro queda pendiente y se reintenta.</p>
         <div class="grilla g3">
           <div class="kpi ${r.pendientes ? "" : "pos"}"><div class="etq">Pendientes</div><div class="val">${r.pendientes}</div><div class="sub">${r.pendiente_desde ? "desde " + fechaHora(r.pendiente_desde) : "cola vacía"}</div></div>
           <div class="kpi"><div class="etq">Sincronizados</div><div class="val">${r.sincronizados}</div></div>

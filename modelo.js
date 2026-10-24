@@ -442,3 +442,45 @@ export function conclusion(res) {
 
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 const pctSigno = (x) => (x === null ? "sin base de comparación" : `${x > 0 ? "+" : "−"}${Math.abs(x * 100).toLocaleString("es-AR", { maximumFractionDigits: 1 })}\u00a0%`);
+
+// ---------------------------------------------------------------------
+// Gestión del inventario: valorización, rotación y clasificación ABC / XYZ
+// ---------------------------------------------------------------------
+// ABC por consumo valorizado del período (ventas × costo unitario): A hasta el corte A del acumulado,
+// B hasta el corte B, C el resto. XYZ por variabilidad de la demanda diaria: CV = σ ÷ d.
+export function clasificar(datos) {
+  const P = prepararParametros(datos.parametros);
+  const S = prepararSeries(datos);
+  const L = S.L;
+  const corte = (k, def) => ({ ...P.leer(k), valor: P.v(k) ?? def, porDefecto: P.v(k) === null });
+  const cA = corte("abc_corte_a", 80), cB = corte("abc_corte_b", 95), cX = corte("xyz_corte_x", 0.5), cY = corte("xyz_corte_y", 1);
+  const filas = S.productos.map((p) => {
+    const c = P.v("costo_unitario", p.codigo);
+    const ventas = p.ventas.reduce((a, b) => a + b, 0);
+    const dbar = ventas / L;
+    const sigma = L > 1 ? Math.sqrt(p.ventas.reduce((a, x) => a + (x - dbar) ** 2, 0) / (L - 1)) : null;
+    const stockProm = p.stock.reduce((a, b) => a + b, 0) / L, stockFin = p.stock[L - 1];
+    const consumo = c === null ? null : ventas * c;
+    const valorProm = c === null ? null : stockProm * c, valorFin = c === null ? null : stockFin * c;
+    const rotacion = valorProm > 0 && consumo !== null ? (consumo * 365 / L) / valorProm : null;   // veces por año
+    const dias = dbar > 0 ? stockProm / dbar : null;                                                 // días de inventario
+    const cv = dbar > 0 && sigma !== null ? sigma / dbar : null;
+    const xyz = cv === null ? null : cv <= cX.valor ? "X" : cv <= cY.valor ? "Y" : "Z";
+    return { codigo: p.codigo, descripcion: p.descripcion, c, origenCosto: P.leer("costo_unitario", p.codigo), ventas, dbar, sigma, cv, xyz,
+      stockProm, stockFin, consumo, valorProm, valorFin, rotacion, dias, sinVentas: ventas === 0 };
+  });
+  const totConsumo = filas.reduce((a, x) => a + (x.consumo || 0), 0);
+  let acum = 0;
+  [...filas].sort((a, b) => (b.consumo || 0) - (a.consumo || 0)).forEach((x) => {
+    const previo = acum;
+    x.parte = totConsumo > 0 ? (x.consumo || 0) / totConsumo * 100 : 0;
+    acum += x.parte; x.acumulado = acum;
+    x.abc = !(x.consumo > 0) ? "C" : previo < cA.valor ? "A" : previo < cB.valor ? "B" : "C";
+  });
+  const sum = (k) => filas.reduce((a, x) => a + (x[k] || 0), 0);
+  const tot = { consumo: totConsumo, valorProm: sum("valorProm"), valorFin: sum("valorFin"), ventas: sum("ventas"),
+    stockProm: sum("stockProm"), sinVentas: filas.filter((x) => x.sinVentas).length, sinCosto: filas.filter((x) => x.c === null).length };
+  tot.rotacion = tot.valorProm > 0 ? (tot.consumo * 365 / L) / tot.valorProm : null;
+  tot.dias = tot.consumo > 0 ? tot.valorProm / (tot.consumo / L) : null;
+  return { P, S, L, filas, tot, cortes: { cA, cB, cX, cY } };
+}

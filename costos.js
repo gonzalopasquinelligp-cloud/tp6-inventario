@@ -1,8 +1,8 @@
 // Costo y servicio: tablero para decidir si se puede bajar el costo del inventario sin perder nivel de servicio.
 // Los datos vienen del servidor (analisis_datos); los cálculos están en modelo.js con sus fórmulas a la vista.
-import { rpc, puede, leer } from "./api.js?v=202610241523";
-import { esc, num, aviso, ICON, tabla, pedir, toast, descargarCSV, usd, dec, pct, origen, fechaHora, TZ } from "./ui.js?v=202610241523";
-import { analizar, zDeNS, CATEGORIAS, MOTIVOS } from "./modelo.js?v=202610241523";
+import { rpc, puede, leer } from "./api.js?v=202610241532";
+import { esc, num, aviso, ICON, tabla, pedir, toast, descargarCSV, usd, dec, pct, origen, fechaHora, TZ } from "./ui.js?v=202610241532";
+import { analizar, zDeNS, CATEGORIAS, MOTIVOS } from "./modelo.js?v=202610241532";
 
 const fCorta = (iso) => { const [, m, d] = iso.split("-"); return `${d}/${m}`; };
 const fLarga = (iso) => iso.split("-").reverse().join("/");
@@ -195,6 +195,7 @@ function pintarRespuesta(res) {
     <p class="resp-metas" id="resp-metas"></p>
     <div class="resp-pie">
       <div><h3>Por qué</h3><ul class="resp-porque">${porque.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>
+      <p class="resp-aviso"><a href="#/gestion/${res.series.dias[0]}/${res.series.dias[res.series.L - 1]}">Ver valorización, rotación y clasificación ABC / XYZ en el tablero de gestión</a></p>
       ${baja ? `<p class="resp-aviso"><span class="conf conf-baja">Baja confianza</span> ${baja} de ${conVentas} productos vendieron pocos días: tomá el resultado como orientativo. <a href="#sec-limites" id="ir-limites">Ver límites del resultado</a></p>` : ""}
     </div>`;
   estadoVista.el.querySelector("#ir-limites")?.addEventListener("click", (e) => {
@@ -675,7 +676,7 @@ function pintarDevoluciones(res) {
 // ---------------------------------------------------------------------
 // Parámetros y supuestos
 // ---------------------------------------------------------------------
-const GRUPOS = { meta: "Metas de los indicadores", financiero: "Financieros", operativo: "Operativos", calidad: "Calidad", quiebre: "Quiebre", servicio: "Servicio", confianza: "Confianza estadística", abastecimiento: "Abastecimiento" };
+const GRUPOS = { meta: "Metas de los indicadores", clasificacion: "Clasificación ABC / XYZ", financiero: "Financieros", operativo: "Operativos", calidad: "Calidad", quiebre: "Quiebre", servicio: "Servicio", confianza: "Confianza estadística", abastecimiento: "Abastecimiento" };
 
 function pintarParametros(res) {
   const P = res.P, admin = puede("administrador");

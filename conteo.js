@@ -1,8 +1,8 @@
 // Conteo cíclico: jornadas, captura por posición (QR o manual), recuentos y avance.
-import { rpc, leer, estado, puede } from "./api.js?v=202610241523";
-import { esc, num, aviso, ICON, nuevoId, fechaHora, tabla, chip, ESTADOS_JORNADA, pedir, toast } from "./ui.js?v=202610241523";
-import { escanear } from "./escaner.js?v=202610241523";
-import { rackHTML, seguirSync } from "./componentes.js?v=202610241523";
+import { rpc, leer, estado, puede } from "./api.js?v=202610241532";
+import { esc, num, aviso, ICON, nuevoId, fechaHora, tabla, chip, ESTADOS_JORNADA, pedir, toast } from "./ui.js?v=202610241532";
+import { escanear } from "./escaner.js?v=202610241532";
+import { rackHTML, seguirSync } from "./componentes.js?v=202610241532";
 
 let temporizador = null;
 export function destruir() { clearInterval(temporizador); }
@@ -17,15 +17,15 @@ async function lista(el) {
   const jornadas = await leer("v_jornadas", (q) => q.order("id", { ascending: false }).limit(30));
   const abiertas = jornadas.filter((j) => j.tipo === "CICLICA" && ["ABIERTA", "EN_REVISION"].includes(j.estado));
   el.innerHTML = `
-    ${puede("supervisor") ? `<div class="panel"><div class="panel-cab"><h2>Abrir una jornada de conteo</h2></div><div id="nueva"></div></div>` : ""}
     <div class="panel"><div class="panel-cab"><h2>Jornadas para contar</h2></div>
       ${abiertas.length ? abiertas.map((j) => `
         <a class="accion" style="margin-bottom:10px;min-height:0" href="#/conteo/${j.id}">
           <div class="flex entre" style="width:100%"><b>${esc(j.codigo)}</b>${chip(ESTADOS_JORNADA, j.estado)}</div>
           <span>Corte ${fechaHora(j.fecha_corte)} · Responsable: ${esc(j.responsable_nombre)} · ${j.posiciones_contadas}/${j.total_posiciones} posiciones contadas${j.recuentos_pendientes ? ` · <b>${j.recuentos_pendientes} recuento(s) pendiente(s)</b>` : ""}</span>
           <div class="progreso" style="width:100%"><div style="width:${Math.round(100 * j.posiciones_contadas / j.total_posiciones)}%"></div></div>
-        </a>`).join("") : `<div class="vacio">No hay jornadas de conteo abiertas.${puede("supervisor") ? " Abrí una desde el panel superior." : " Pedile al supervisor que abra una."}</div>`}
+        </a>`).join("") : `<div class="vacio">No hay jornadas de conteo abiertas.${puede("supervisor") ? " Abrí una acá abajo." : " Pedile al supervisor que abra una."}</div>`}
     </div>
+    ${puede("supervisor") ? `<details class="panel" id="panel-nueva" ${abiertas.length ? "" : "open"}><summary>Abrir una jornada de conteo</summary><div id="nueva"></div></details>` : ""}
     <div class="panel"><h2>Historial de jornadas</h2>
       ${tabla([
         { t: "Jornada", html: (j) => `<a href="#/conciliacion/${j.id}">${esc(j.codigo)}</a>` },
@@ -47,7 +47,7 @@ async function formularioNueva(cont) {
   const modulos = [...new Set(estado.posiciones.map((p) => p.modulo))].sort();
   cont.innerHTML = `<form id="f-nueva">
     <div class="grilla g2">
-      <div class="campo"><label>Alcance</label>
+      <div class="campo"><label for="alc-tipo">Alcance</label>
         <select id="alc-tipo"><option value="todas">Todas las posiciones activas (${estado.posiciones.filter((p) => p.activa).length})</option>
           <option value="modulos">Por módulo del rack</option><option value="lista">Posiciones seleccionadas</option></select></div>
       <div class="campo"><label for="resp">Responsable del conteo</label>
@@ -196,7 +196,7 @@ async function captura(el, jornadaId) {
           <div class="ayuda">El cero es válido: significa «contado y no hay unidades».</div></div>
         <div class="campo"><label for="c-obs">Observación (opcional)</label><input id="c-obs" type="text" maxlength="200"></div>
         <div id="c-err"></div>
-        <button class="btn ok grande" type="submit">Guardar ${recuento ? "recuento" : yaContada ? "producto adicional" : "conteo"}</button>
+        <div class="accion-fija"><button class="btn ok grande" type="submit">Guardar ${recuento ? "recuento" : yaContada ? "producto adicional" : "conteo"}</button></div>
       </form>`;
     const f = elCap.querySelector("#f-conteo");
     let metodoProd = esp && !yaContada ? "SUGERIDO" : "MANUAL";
@@ -241,7 +241,7 @@ async function captura(el, jornadaId) {
         await cargar(); pintarAvance();
       } catch (err) {
         f.querySelector("#c-err").innerHTML = aviso("error", esc(err.message));
-        b.disabled = false; b.textContent = err.red ? "Reintentar (sin duplicar)" : "Guardar";
+        b.disabled = false; b.textContent = err.red ? "Reintentar (sin duplicar)" : `Guardar ${recuento ? "recuento" : yaContada ? "producto adicional" : "conteo"}`;
       }
     });
   }

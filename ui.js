@@ -155,5 +155,6 @@ export const ICON = {
   salir: P('<path d="M9 21H5V3h4"/><path d="M16 17l5-5-5-5M21 12H9"/>'),
   csv: P('<path d="M14 3H6v18h12V7z"/><path d="M14 3v4h4M9 13h6M9 17h6"/>'),
   mas: P('<path d="M12 5v14M5 12h14"/>'),
+  tablero: P('<rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="5" rx="1"/><rect x="13" y="10" width="8" height="11" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/>'),
   costo: P('<path d="M4 19h16"/><path d="M6 15l4-5 3 3 5-7"/><circle cx="18" cy="6" r="1.5"/>'),
 };

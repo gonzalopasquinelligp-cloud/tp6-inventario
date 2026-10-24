@@ -1,7 +1,7 @@
 // Lectura de QR / código de barras con la cámara y alternativa manual.
 // - QR: decodificador jsQR (funciona en cualquier navegador moderno).
 // - Códigos de barras 1D de producto (EAN, Code 128…): BarcodeDetector nativo, si el navegador lo ofrece.
-import { esc, modal, ICON } from "./ui.js?v=202610241523";
+import { esc, modal, ICON } from "./ui.js?v=202610241532";
 
 // Posición: "A1", "POS:A1" o una URL terminada en A1.
 export function normalizarPosicion(txt) {

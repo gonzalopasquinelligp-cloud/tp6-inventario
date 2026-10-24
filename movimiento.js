@@ -1,9 +1,9 @@
 // Ingreso por OC, egreso por venta y retorno de venta (mismo circuito de 3 pasos).
-import { rpc, estado, producto } from "./api.js?v=202610241523";
-import { esc, num, aviso, ICON, nuevoId, fechaHora, toast } from "./ui.js?v=202610241523";
-import { escanear } from "./escaner.js?v=202610241523";
-import { seguirSync } from "./componentes.js?v=202610241523";
-import { MOTIVOS } from "./modelo.js?v=202610241523";
+import { rpc, estado, producto } from "./api.js?v=202610241532";
+import { esc, num, aviso, ICON, nuevoId, fechaHora, toast } from "./ui.js?v=202610241532";
+import { escanear } from "./escaner.js?v=202610241532";
+import { seguirSync } from "./componentes.js?v=202610241532";
+import { MOTIVOS } from "./modelo.js?v=202610241532";
 
 const CONF = {
   ingreso: { rpc: "registrar_ingreso", titulo: "Ingreso de mercadería", doc: "Orden de compra / documento", docPh: "Ej.: OC-2026-0154",
@@ -19,11 +19,11 @@ export async function render(el, { ruta, params }) {
   const s = { pos: null, metodoPos: null, info: null, clientId: nuevoId() };
 
   el.innerHTML = `
-    <div class="btns" style="margin-bottom:14px">
-      <a class="btn ${ruta === "ingreso" ? "prim" : ""}" href="#/ingreso">Ingreso</a>
-      <a class="btn ${ruta === "egreso" ? "prim" : ""}" href="#/egreso">Egreso por venta</a>
-      <a class="btn ${ruta === "retorno" ? "prim" : ""}" href="#/retorno">Retorno de venta</a>
-    </div>
+    <nav class="segmento" aria-label="Tipo de operación">
+      <a href="#/ingreso" ${ruta === "ingreso" ? 'aria-current="page"' : ""}>Ingreso</a>
+      <a href="#/egreso" ${ruta === "egreso" ? 'aria-current="page"' : ""}>Egreso</a>
+      <a href="#/retorno" ${ruta === "retorno" ? 'aria-current="page"' : ""}>Retorno</a>
+    </nav>
     <div class="panel pasos" style="max-width:640px">
       <div class="paso actual" id="p1"><h3>Posición</h3>
         <button class="btn prim grande" id="scan">${ICON.qr} Escanear QR de la posición</button>
@@ -49,7 +49,13 @@ export async function render(el, { ruta, params }) {
     const cont = info.contenido[0];
     elInfo.innerHTML = `<div class="ficha"><dt>Posición</dt><dd class="pos-grande">${esc(info.posicion)}</dd>
       <dt>Contenido</dt><dd>${cont ? `${esc(cont.producto)} · ${esc(cont.descripcion)}<br>Lote ${esc(cont.lote)} · <b>${num(cont.cantidad)} un. disponibles</b>` : "Vacía"}</dd>
-      <dt>Lectura</dt><dd>${metodo === "QR" ? "Escaneada (QR)" : "Ingreso manual"}</dd></div>`;
+      <dt>Lectura</dt><dd>${metodo === "QR" ? "Escaneada (QR)" : "Ingreso manual"}</dd></div>
+      <button class="btn chico" type="button" id="cambiar-pos">Cambiar posición</button>`;
+    elInfo.querySelector("#cambiar-pos").addEventListener("click", () => {
+      el.querySelector("#p1").classList.remove("hecho"); el.querySelector("#p1").classList.add("actual");
+      el.querySelector("#p2").classList.remove("actual", "hecho"); el.querySelector("#p3").classList.remove("actual", "hecho");
+      elInfo.innerHTML = ""; elDet.innerHTML = `<span class="muted small">Primero identificá la posición.</span>`; elRes.innerHTML = ""; s.pos = null;
+    });
     if (!info.activa) { elInfo.innerHTML += aviso("error", "La posición está inactiva."); return; }
     if (info.jornada) {
       elInfo.innerHTML += aviso("alerta", `La posición está incluida en la jornada de conteo <b>${esc(info.jornada.codigo)}</b> (${esc(info.jornada.estado)}). No se registran movimientos hasta su cierre.`);
@@ -85,7 +91,7 @@ export async function render(el, { ruta, params }) {
         <div class="campo oculto" id="campo-motivo-obs"><label for="motivo-obs">Describí el motivo</label><input id="motivo-obs" type="text" maxlength="200"></div>` : ""}
       <div class="campo"><label for="obs">Observación (opcional)</label><input id="obs" type="text" maxlength="200"></div>
       <div id="err"></div>
-      <button class="btn prim grande" type="submit">${esc(c.verbo)}</button>
+      <div class="accion-fija"><button class="btn prim grande" type="submit">Revisar ${esc(c.verbo.split(" ")[1])}</button></div>
     </form>`;
     const f = elDet.querySelector("#f-det");
     elDet.querySelector("#scan-prod")?.addEventListener("click", async () => {
@@ -129,7 +135,7 @@ export async function render(el, { ruta, params }) {
       ${motivo ? `<dt>Motivo</dt><dd>${esc(MOTIVOS[motivo])}${motivoObs ? ` · ${esc(motivoObs)}` : ""}</dd>` : ""}
       <dt>Saldo estimado</dt><dd>${num(cont?.cantidad || 0)} → ${num(nuevo)} un.</dd></div>
       <div id="envio"></div>
-      <div class="btns"><button class="btn ok grande" id="confirmar">Confirmar y guardar</button><button class="btn" id="corregir">Corregir</button></div>`;
+      <div class="accion-fija btns"><button class="btn ok grande" id="confirmar">${esc(c.verbo)}</button><button class="btn" id="corregir">Corregir datos</button></div>`;
     elRes.querySelector("#corregir").addEventListener("click", () => {
       elRes.innerHTML = ""; el.querySelector("#p3").classList.remove("actual"); el.querySelector("#p2").classList.replace("hecho", "actual");
     });
@@ -152,7 +158,7 @@ export async function render(el, { ruta, params }) {
       seguirSync(elRes.querySelector("#sync-est"), r.id);
     } catch (e) {
       envio.innerHTML = aviso("error", esc(e.message));
-      boton.disabled = false; boton.textContent = e.red ? "Reintentar (sin duplicar)" : "Confirmar y guardar";
+      boton.disabled = false; boton.textContent = e.red ? "Reintentar (sin duplicar)" : c.verbo;
     }
   }
 

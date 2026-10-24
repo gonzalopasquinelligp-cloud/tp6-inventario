@@ -1,7 +1,7 @@
-import { leer, estado } from "./api.js?v=202610241523";
-import { esc, num, signo, claseSigno, fechaHora, fecha, ICON, tabla, descargarCSV, aviso } from "./ui.js?v=202610241523";
-import { escanear } from "./escaner.js?v=202610241523";
-import { rackHTML } from "./componentes.js?v=202610241523";
+import { leer, estado } from "./api.js?v=202610241532";
+import { esc, num, signo, claseSigno, fechaHora, fecha, ICON, tabla, descargarCSV, aviso } from "./ui.js?v=202610241532";
+import { escanear } from "./escaner.js?v=202610241532";
+import { rackHTML } from "./componentes.js?v=202610241532";
 
 let datos = [], posEstado = [];
 
@@ -14,17 +14,17 @@ export async function render(el, { params }) {
     <div class="panel">
       <div class="panel-cab"><h2>Disponibilidad</h2>
         <div class="btns"><button class="btn prim" id="escanear">${ICON.qr} Escanear posición</button>
-        <button class="btn" id="csv">${ICON.csv} CSV</button></div></div>
+        <button class="btn" id="csv">${ICON.csv} Exportar CSV</button></div></div>
       <div class="filtros">
         <div><label for="f-txt">Código o descripción</label><input id="f-txt" type="text" placeholder="Ej.: PROD003 o bolso"></div>
         <div><label for="f-pos">Posición</label><select id="f-pos"><option value="">Todas</option>${estado.posiciones.map((p) => `<option>${esc(p.codigo)}</option>`).join("")}</select></div>
         <div><label for="f-lote">Lote</label><input id="f-lote" type="text" placeholder="Ej.: L0009"></div>
       </div>
-      <div class="aviso info small"><b>Cómo leer esta tabla:</b> <b>Stock disponible</b> = stock teórico del libro (stock inicial + movimientos), el que se usa para vender.
-        <b>Último conteo</b> = lo encontrado físicamente en la última jornada; no modifica el stock.
-        <b>Diferencia pendiente</b> = diferencia de una jornada todavía sin resolver por el supervisor.</div>
       <div id="ficha"></div>
       <div id="resultado"></div>
+      <details class="nota-tabla"><summary>Qué significa cada columna</summary>
+        <p><b>Stock disponible</b>: stock del sistema (inicial + movimientos), el que se usa para vender. <b>Último conteo</b>: lo encontrado en la última jornada; no cambia el stock.
+        <b>Diferencia pendiente</b>: diferencia de una jornada que el supervisor todavía no resolvió.</p></details>
     </div>
     <div class="panel"><h2>Mapa del rack</h2><div id="rack">${rackHTML(posEstado)}</div></div>`;
 

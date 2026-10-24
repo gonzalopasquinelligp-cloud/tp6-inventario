@@ -1,6 +1,6 @@
-import { leer, puede, estado } from "./api.js?v=202610241523";
-import { esc, num, signo, claseSigno, fechaHora, ICON, tabla, chip, ESTADOS_JORNADA } from "./ui.js?v=202610241523";
-import { rackHTML } from "./componentes.js?v=202610241523";
+import { leer, puede, estado } from "./api.js?v=202610241532";
+import { esc, num, signo, claseSigno, fechaHora, ICON, tabla, chip, ESTADOS_JORNADA } from "./ui.js?v=202610241532";
+import { rackHTML } from "./componentes.js?v=202610241532";
 
 export async function render(el) {
   const [pos, jornadas, sync, movs, pendientes] = await Promise.all([
@@ -16,13 +16,13 @@ export async function render(el) {
   const s = sync[0] || {};
 
   el.innerHTML = `
-    <p class="muted" style="margin-top:0">Hola, <b>${esc(estado.perfil.nombre)}</b>. Elegí una operación o escaneá una posición.</p>
     <div class="acciones" style="margin-bottom:16px">
       <a class="accion" href="#/consulta"><div class="ic">${ICON.buscar}</div><b>Consultar</b><span>Stock por código, lote o posición</span></a>
       <a class="accion" href="#/ingreso"><div class="ic">${ICON.ingreso}</div><b>Ingreso</b><span>Mercadería por orden de compra</span></a>
       <a class="accion" href="#/egreso"><div class="ic">${ICON.egreso}</div><b>Egreso</b><span>Salida por venta</span></a>
       <a class="accion" href="#/conteo"><div class="ic">${ICON.conteo}</div><b>Conteo cíclico</b><span>${jornadas.filter((j) => j.estado === "ABIERTA").length} jornada(s) abierta(s)</span></a>
     </div>
+    ${puede("supervisor") ? `<div class="btns" style="margin-bottom:16px"><a class="btn" href="#/gestion">${ICON.tablero} Tablero de gestión</a><a class="btn" href="#/costos">${ICON.costo} Costo y servicio</a></div>` : ""}
     <div class="grilla g4" style="margin-bottom:16px">
       <div class="kpi"><div class="etq">Stock disponible</div><div class="val">${num(total)}</div><div class="sub">unidades teóricas (libro)</div></div>
       <div class="kpi"><div class="etq">Posiciones ocupadas</div><div class="val">${ocupadas.length} / ${pos.length}</div><div class="sub">${pos.length - ocupadas.length} vacías</div></div>
