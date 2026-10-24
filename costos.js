@@ -1,15 +1,13 @@
-// Costo y servicio: costo total de inventario, nivel de servicio (OTIF simulado), política de stock y simulador.
+// Costo y servicio: tablero para decidir si se puede bajar el costo del inventario sin perder nivel de servicio.
 // Los datos vienen del servidor (analisis_datos); los cálculos están en modelo.js con sus fórmulas a la vista.
-import { rpc, puede } from "./api.js";
-import { esc, num, aviso, ICON, tabla, pedir, toast, descargarCSV, usd, dec, pct, origen, fechaHora } from "./ui.js";
-import { analizar, zDeNS, CATEGORIAS, MOTIVOS } from "./modelo.js";
+import { rpc, puede } from "./api.js?v=202610241509";
+import { esc, num, aviso, ICON, tabla, pedir, toast, descargarCSV, usd, dec, pct, origen, fechaHora } from "./ui.js?v=202610241509";
+import { analizar, zDeNS, CATEGORIAS, MOTIVOS } from "./modelo.js?v=202610241509";
 
-const COLOR = {
-  capital: "var(--s1)", almacenamiento: "var(--s2)", orden: "var(--s3)", manipulacion: "var(--s4)",
-  devoluciones: "var(--s5)", obsolescencia: "var(--s6)", quiebre: "var(--s7)",
-};
 const fCorta = (iso) => { const [, m, d] = iso.split("-"); return `${d}/${m}`; };
 const fLarga = (iso) => iso.split("-").reverse().join("/");
+const usd0 = (v) => (v === null || v === undefined ? "—" : `USD ${Math.round(v).toLocaleString("es-AR")}`);
+const signoVar = (v) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v)} %`;
 
 let estadoVista = null;
 let alRedimensionar = null;
@@ -17,16 +15,31 @@ let alRedimensionar = null;
 export function destruir() { if (alRedimensionar) window.removeEventListener("resize", alRedimensionar); alRedimensionar = null; }
 
 export async function render(el, { params }) {
-  estadoVista = { el, datos: null, variacion: 0, ns: null, gran: "dia", desde: params[0] || null, hasta: params[1] || null };
+  estadoVista = { el, datos: null, variacion: 0, ns: null, gran: "dia", desde: params[0] || null, hasta: params[1] || null, sel: null };
   el.innerHTML = `<div class="cs">
-    <section class="cs-periodo" aria-label="Período de análisis">
-      <form id="f-periodo" class="cs-periodo-form">
-        <div><label for="p-desde">Desde</label><input id="p-desde" type="date" required></div>
-        <div><label for="p-hasta">Hasta</label><input id="p-hasta" type="date" required></div>
-        <div><label for="p-gran">Agrupar por</label><select id="p-gran"><option value="dia">Día</option><option value="semana">Semana (7 días)</option></select></div>
-        <button class="btn" type="submit">Actualizar</button>
-      </form>
-      <p class="cs-fuente" id="fuente"></p>
+    <section class="cs-ctrl" aria-label="Período y escenario">
+      <button class="cs-resumen" type="button" id="cs-abrir" aria-expanded="false" aria-controls="cs-panel">
+        <span id="cs-resumen-txt">Cargando período…</span><span class="cs-cambiar">Cambiar</span></button>
+      <div class="cs-panel" id="cs-panel">
+        <form id="f-periodo" class="cs-grupo">
+          <span class="cs-grupo-t">Período</span>
+          <div class="cs-campo"><label for="p-desde">Desde</label><input id="p-desde" type="date" required></div>
+          <div class="cs-campo"><label for="p-hasta">Hasta</label><input id="p-hasta" type="date" required></div>
+          <div class="cs-campo"><label for="p-gran">Ver por</label><select id="p-gran"><option value="dia">Día</option><option value="semana">Semana</option></select></div>
+          <button class="btn" type="submit">Ver período</button>
+        </form>
+        <form class="cs-grupo simulador" id="simulador" aria-label="Probar un escenario">
+          <span class="cs-grupo-t">Escenario de prueba<small>No cambia los datos guardados</small></span>
+          <div class="cs-campo sim-campo"><label for="s-var">Variación de ventas</label>
+            <div class="sim-fila"><input id="s-var-r" type="range" min="-50" max="100" step="5" aria-label="Variación de ventas, deslizador">
+            <span class="sim-num"><input id="s-var" type="number" min="-90" max="300" step="1" inputmode="numeric"> %</span></div></div>
+          <div class="cs-campo sim-campo"><label for="s-ns">Nivel de servicio buscado</label>
+            <div class="sim-fila"><input id="s-ns-r" type="range" min="80" max="99.5" step="0.5" aria-label="Nivel de servicio, deslizador">
+            <span class="sim-num"><input id="s-ns" type="number" min="50" max="99.9" step="0.1" inputmode="decimal"> %</span></div>
+            <div class="ayuda" id="s-z"></div></div>
+          <button class="btn" type="button" id="s-reset">Volver a lo guardado</button>
+        </form>
+      </div>
     </section>
     <div id="msg"></div>
     <div id="cuerpo"><div class="cargando">Cargando datos del período…</div></div>
@@ -38,67 +51,24 @@ export async function render(el, { params }) {
     cargar();
   });
   el.querySelector("#p-gran").addEventListener("change", (e) => { estadoVista.gran = e.target.value; if (estadoVista.datos) pintar(); });
+  el.querySelector("#cs-abrir").addEventListener("click", (e) => {
+    const abierto = e.currentTarget.getAttribute("aria-expanded") === "true";
+    e.currentTarget.setAttribute("aria-expanded", String(!abierto));
+    el.querySelector(".cs-ctrl").classList.toggle("abierto", !abierto);
+  });
+  conectarSimulador();
   let t;
   destruir();
-  alRedimensionar = () => { clearTimeout(t); t = setTimeout(() => estadoVista?.res && pintarGraficos(estadoVista.res), 200); };
+  alRedimensionar = () => { clearTimeout(t); t = setTimeout(() => estadoVista?.res && pintarGrafico(estadoVista.res), 200); };
   window.addEventListener("resize", alRedimensionar);
   await cargar();
 }
 
-async function cargar() {
+function conectarSimulador() {
   const s = estadoVista, el = s.el;
-  el.querySelector("#msg").innerHTML = "";
-  try {
-    s.datos = await rpc("analisis_datos", { p_desde: s.desde || null, p_hasta: s.hasta || null });
-  } catch (e) {
-    el.querySelector("#msg").innerHTML = aviso("error", esc(e.message));
-    if (!s.datos) el.querySelector("#cuerpo").innerHTML = "";
-    return;
-  }
-  const d = s.datos;
-  s.desde = d.desde; s.hasta = d.hasta;
-  for (const id of ["p-desde", "p-hasta"]) {
-    const inp = el.querySelector("#" + id);
-    inp.min = d.fecha_min_datos; inp.max = d.fecha_max_datos;
-  }
-  el.querySelector("#p-desde").value = d.desde; el.querySelector("#p-hasta").value = d.hasta;
-  el.querySelector("#p-gran").value = s.gran;
-  if (s.ns === null) s.ns = Number(d.parametros.find((p) => p.clave === "nivel_servicio")?.valor ?? 95);
-  el.querySelector("#fuente").innerHTML = `Datos registrados del ${fLarga(d.desde)} al ${fLarga(d.hasta)}: stock al inicio del período y
-    ${num(d.movimientos.length)} movimientos. Hay datos desde el ${fLarga(d.fecha_min_datos)} hasta el ${fLarga(d.fecha_max_datos)}.`;
-  armarCuerpo();
-  pintar();
-}
-
-function armarCuerpo() {
-  const el = estadoVista.el.querySelector("#cuerpo");
-  el.innerHTML = `
-    <section class="veredicto" id="veredicto" aria-live="polite">
-      <div class="ver-texto" id="ver-texto"></div>
-      <form class="simulador" id="simulador" aria-label="Simulador">
-        <h2>Simulador</h2>
-        <div class="campo"><label for="s-var">Variación de ventas</label>
-          <div class="sim-fila"><input id="s-var-r" type="range" min="-50" max="100" step="5" aria-label="Variación de ventas (deslizador)">
-          <span class="sim-num"><input id="s-var" type="number" min="-90" max="300" step="1" inputmode="numeric"> %</span></div>
-          <div class="ayuda">Multiplica cada retiro por venta registrado. 0 = ventas como se registraron.</div></div>
-        <div class="campo"><label for="s-ns">Nivel de servicio objetivo</label>
-          <div class="sim-fila"><input id="s-ns-r" type="range" min="80" max="99.5" step="0.5" aria-label="Nivel de servicio (deslizador)">
-          <span class="sim-num"><input id="s-ns" type="number" min="50" max="99.9" step="0.1" inputmode="decimal"> %</span></div>
-          <div class="ayuda" id="s-z"></div></div>
-        <button class="btn chico" type="button" id="s-reset">Volver a los valores cargados</button>
-      </form>
-    </section>
-    <section class="bloque" id="b-graficos"></section>
-    <section class="bloque" id="b-politica"></section>
-    <section class="bloque" id="b-costos"></section>
-    <section class="bloque" id="b-sensib"></section>
-    <section class="bloque" id="b-devol"></section>
-    <section class="bloque" id="b-param"></section>`;
-  const s = estadoVista;
   const v = el.querySelector("#s-var"), vr = el.querySelector("#s-var-r"), n = el.querySelector("#s-ns"), nr = el.querySelector("#s-ns-r");
-  v.value = vr.value = s.variacion; n.value = nr.value = s.ns;
   let t;
-  const aplicar = () => { clearTimeout(t); t = setTimeout(pintar, 120); };
+  const aplicar = () => { clearTimeout(t); t = setTimeout(() => s.datos && pintar(), 120); };
   const leerVar = (x) => { const k = Number(x); if (Number.isFinite(k) && k >= -90 && k <= 300) { s.variacion = k; aplicar(); } };
   const leerNs = (x) => { const k = Number(x); if (Number.isFinite(k) && k >= 50 && k <= 99.9) { s.ns = k; aplicar(); } };
   vr.addEventListener("input", () => { v.value = vr.value; leerVar(vr.value); });
@@ -107,9 +77,47 @@ function armarCuerpo() {
   n.addEventListener("input", () => { nr.value = n.value; leerNs(n.value); });
   el.querySelector("#simulador").addEventListener("submit", (e) => e.preventDefault());
   el.querySelector("#s-reset").addEventListener("click", () => {
-    s.variacion = 0; s.ns = Number(s.datos.parametros.find((p) => p.clave === "nivel_servicio")?.valor ?? 95);
-    v.value = vr.value = s.variacion; n.value = nr.value = s.ns; pintar();
+    s.variacion = 0; s.ns = Number(s.datos?.parametros.find((p) => p.clave === "nivel_servicio")?.valor ?? 95);
+    v.value = vr.value = s.variacion; n.value = nr.value = s.ns; if (s.datos) pintar();
   });
+}
+
+async function cargar() {
+  const s = estadoVista, el = s.el;
+  el.querySelector("#msg").innerHTML = "";
+  try {
+    s.datos = await rpc("analisis_datos", { p_desde: s.desde || null, p_hasta: s.hasta || null });
+  } catch (e) {
+    el.querySelector("#msg").innerHTML = aviso("error", `No se pudieron leer los datos del período: ${esc(e.message)}. Revisá las fechas y tocá «Ver período».`);
+    if (!s.datos) el.querySelector("#cuerpo").innerHTML = "";
+    return;
+  }
+  const d = s.datos;
+  s.desde = d.desde; s.hasta = d.hasta;
+  for (const id of ["p-desde", "p-hasta"]) { const inp = el.querySelector("#" + id); inp.min = d.fecha_min_datos; inp.max = d.fecha_max_datos; }
+  el.querySelector("#p-desde").value = d.desde; el.querySelector("#p-hasta").value = d.hasta;
+  el.querySelector("#p-gran").value = s.gran;
+  if (s.ns === null) s.ns = Number(d.parametros.find((p) => p.clave === "nivel_servicio")?.valor ?? 95);
+  el.querySelector("#s-var").value = el.querySelector("#s-var-r").value = s.variacion;
+  el.querySelector("#s-ns").value = el.querySelector("#s-ns-r").value = s.ns;
+  armarCuerpo();
+  pintar();
+}
+
+function armarCuerpo() {
+  estadoVista.el.querySelector("#cuerpo").innerHTML = `
+    <section class="respuesta" id="respuesta" aria-live="polite"></section>
+    <section class="bloque" id="b-grafico"></section>
+    <div class="dos-col">
+      <section class="bloque" id="b-acciones"></section>
+      <section class="bloque" id="b-categorias"></section>
+    </div>
+    <details class="seccion"><summary>Cálculo por producto: stock de seguridad, punto de pedido y lote</summary><div id="b-politica"></div></details>
+    <details class="seccion"><summary>Costo por producto</summary><div id="b-costos"></div></details>
+    <details class="seccion"><summary>Qué pasa si las ventas aumentan</summary><div id="b-sensib"></div></details>
+    <details class="seccion"><summary>Devoluciones del período</summary><div id="b-devol"></div></details>
+    <details class="seccion"><summary>Parámetros y supuestos (costos, plazos, lotes)</summary><div id="b-param"></div></details>
+    <details class="seccion" id="sec-limites"><summary>Límites del resultado y cómo se calcula</summary><div id="b-limites"></div></details>`;
 }
 
 function pintar() {
@@ -119,168 +127,272 @@ function pintar() {
   catch (e) { el.querySelector("#msg").innerHTML = aviso("error", `No se pudo calcular: ${esc(e.message)}`); return; }
   s.res = res;
   const nsParam = res.P.leer("nivel_servicio");
-  el.querySelector("#s-z").innerHTML = `z = ${dec(zDeNS(s.ns / 100), 3)} · ${s.ns === nsParam.valor ? origen(nsParam.origen, nsParam.razon) : `<span class="org org-sim" title="Valor del simulador: no se guarda.">Valor del simulador</span>`}`;
-  pintarVeredicto(res);
-  pintarGraficos(res);
+  el.querySelector("#s-z").innerHTML = s.ns === nsParam.valor ? `z = ${dec(zDeNS(s.ns / 100), 3)} ${origen(nsParam.origen, nsParam.razon)}`
+    : `z = ${dec(zDeNS(s.ns / 100), 3)} <span class="org org-sim" title="Valor de prueba: no se guarda.">Prueba</span>`;
+  el.querySelector("#cs-resumen-txt").innerHTML = `<b>${fCorta(res.series.dias[0])}–${fCorta(res.series.dias[res.series.L - 1])}</b>`
+    + ` · ventas ${signoVar(res.variacion)} · servicio ${dec(res.ns, 1)} %`;
+  pintarRespuesta(res);
+  pintarGrafico(res);
+  pintarCategorias(res);
+  pintarAcciones(res);
   pintarPolitica(res);
   pintarCostos(res);
   pintarSensibilidad(res);
   pintarDevoluciones(res);
   pintarParametros(res);
+  pintarLimites(res);
 }
 
 // ---------------------------------------------------------------------
-// Veredicto y conclusión
+// Respuesta: veredicto y tres números (costo, entregas, faltantes)
 // ---------------------------------------------------------------------
-const montoSinUnidad = (v) => usd(v).replace(/^USD\s/, "");
-
-function pintarVeredicto(res) {
-  const { tot, conclusion: c } = res;
-  const filaComp = (t, a, b, fmt, mejorMenor, nota) => {
-    const d = a === null || b === null ? null : b - a;
-    const clase = d === null || Math.abs(d) < 1e-9 ? "" : (d < 0) === mejorMenor ? "mejor" : "peor";
-    return `<tr><th scope="row">${t}${nota ? `<div class="nota">${nota}</div>` : ""}</th><td>${fmt(a)}</td><td>${fmt(b)}</td>
-      <td class="${clase}">${d === null ? "—" : (d > 0 ? "+" : d < 0 ? "−" : "") + fmt(Math.abs(d)).replace(/^−/, "")}</td></tr>`;
+function pintarRespuesta(res) {
+  const c = res.conclusion, t = res.tot, P = res.P;
+  const titulo = c.tono === "si" ? "Sí, se puede" : c.veredicto.startsWith("No sin") ? "No sin perder servicio" : "No conviene";
+  const baja = res.filas.filter((x) => x.pol.bajaConfianza && !x.pol.sinDemanda).length;
+  const conVentas = res.filas.filter((x) => !x.pol.sinDemanda).length;
+  const prueba = res.variacion !== 0 || res.ns !== P.v("nivel_servicio");
+  const periodo = `${fLarga(res.series.dias[0])} al ${fLarga(res.series.dias[res.series.L - 1])} (${res.series.L} días)`;
+  const delta = (a, b, mejorMenor, fmt) => {
+    if (a === null || b === null) return "";
+    const d = b - a;
+    if (Math.abs(d) < 1e-9) return `<span class="fig-delta">sin cambio</span>`;
+    const p = a ? ` (${d > 0 ? "+" : "−"}${dec(Math.abs(d / a) * 100, 0)} %)` : "";
+    return `<span class="fig-delta ${(d < 0) === mejorMenor ? "mejor" : "peor"}">${d > 0 ? "+" : "−"}${fmt(Math.abs(d))}${p}</span>`;
   };
-  const etAct = res.variacion === 0 ? "Actual (registrado)" : `Actual con ${res.variacion > 0 ? "+" : ""}${res.variacion} % de ventas`;
-  estadoVista.el.querySelector("#ver-texto").innerHTML = `
-    <p class="ver-pregunta">¿Se puede bajar el costo del inventario sin perder nivel de servicio?</p>
-    <p class="ver-frase tono-${c.tono}">${esc(c.veredicto)}</p>
-    <div class="comp-cont"><table class="comparacion">
-      <thead><tr><th></th><th scope="col">${esc(etAct)}</th><th scope="col">Propuesta</th><th scope="col">Diferencia</th></tr></thead>
-      <tbody>
-        ${filaComp("Costo del período", tot.actual.total, tot.propuesta.total, montoSinUnidad, true, `USD, ${res.series.L} días`)}
-        ${filaComp("Inventario promedio valorizado", tot.valorPromActual, tot.valorPromPropuesta, montoSinUnidad, true, "USD")}
-        ${filaComp("OTIF simulado", tot.otifActual, tot.otifPropuesta, (x) => pct(x), false, `${num(tot.lineas)} líneas de venta`)}
-        ${filaComp("Unidades no entregadas", tot.faltaActual, tot.faltaPropuesta, num, true)}
-      </tbody>
-    </table></div>
-    <ul class="ver-detalle">${c.detalle.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>
-    <details class="limites" open><summary>Límites de este resultado</summary><ul>${c.limites.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></details>`;
+  const figura = (serie, etiqueta, valor, hoy, dlt, formula) => `<div class="fig" tabindex="0" title="${esc(formula)}">
+      <div class="fig-t">${etiqueta}</div>
+      <div class="fig-v">${valor}</div>
+      <div class="fig-c">Hoy ${hoy} ${dlt}</div>
+      <div class="fig-f">${esc(formula)}</div></div>`;
+  // Las conclusiones que más ayudan a decidir: qué explica la diferencia, qué pasa con el stock,
+  // si depende del supuesto de costo por orden y cuánto margen hay ante más ventas.
+  const d = c.detalle, porque = [...new Set([d[0], d[1], d[2], d[d.length - 1]].filter(Boolean))];
+  estadoVista.el.querySelector("#respuesta").innerHTML = `
+    <p class="resp-pregunta">¿Se puede bajar el costo del inventario sin dejar de entregar?</p>
+    <div class="ver-frase tono-${c.tono}">
+      <span class="resp-titulo">${titulo}</span>
+      <span class="resp-texto">${esc(c.veredicto.replace(/^(Sí|No sin perder servicio|No)\.\s*/, ""))}</span>
+    </div>
+    ${prueba ? `<p class="resp-escenario"><span class="org org-sim">Prueba</span> Escenario de prueba: ventas ${signoVar(res.variacion)}, nivel de servicio ${dec(res.ns, 1)} %. No se guarda.</p>` : ""}
+    <div class="figuras" id="kpis" aria-label="Propuesta contra hoy">
+      ${figura("prop", `Costo del inventario en ${res.series.L} días`, usd0(t.propuesta.total), usd0(t.actual.total), delta(t.actual.total, t.propuesta.total, true, usd0),
+        `Capital + almacenamiento + órdenes de compra + devoluciones, ${periodo}. Propuesta en régimen: stock promedio SS + Q ÷ 2.`)}
+      ${figura("prop", "Entregas que se cumplen (OTIF)", pct(t.otifPropuesta), pct(t.otifActual), delta(t.otifActual, t.otifPropuesta, false, (x) => pct(x)),
+        `Líneas de venta entregadas completas ÷ ${t.lineas} líneas del período. Simulado: cada retiro por venta es un pedido de ese día.`)}
+      ${figura("prop", "Unidades que faltarían", `${num(t.faltaPropuesta)} un.`, `${num(t.faltaActual)} un.`, delta(t.faltaActual, t.faltaPropuesta, true, (x) => `${num(x)} un.`),
+        "Unidades pedidas que no se habrían podido entregar por falta de stock, en la simulación del período.")}
+    </div>
+    <div class="resp-pie">
+      <div><h3>Por qué</h3><ul class="resp-porque">${porque.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>
+      ${baja ? `<p class="resp-aviso"><span class="conf conf-baja">Baja confianza</span> ${baja} de ${conVentas} productos vendieron pocos días: tomá el resultado como orientativo. <a href="#sec-limites" id="ir-limites">Ver límites del resultado</a></p>` : ""}
+    </div>`;
+  estadoVista.el.querySelector("#ir-limites")?.addEventListener("click", (e) => {
+    e.preventDefault(); const sec = estadoVista.el.querySelector("#sec-limites"); sec.open = true; sec.scrollIntoView({ block: "start" });
+  });
 }
 
 // ---------------------------------------------------------------------
-// Gráficos: costo por período, retiros por ventas y OTIF (mismo eje temporal)
+// Gráfico: ventas, entregas y costo en tres paneles con las mismas fechas
 // ---------------------------------------------------------------------
 function escalaNice(max) {
-  if (!(max > 0)) return { max: 1, paso: 0.25 };
+  if (!(max > 0)) return 1;
   const exp = Math.pow(10, Math.floor(Math.log10(max)));
-  for (const m of [1, 2, 2.5, 5, 10]) { const paso = (m * exp) / 4; if (paso * 4 >= max) return { max: paso * 4, paso }; }
-  return { max: 10 * exp, paso: 2.5 * exp };
+  for (const m of [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10]) if (m * exp >= max) return m * exp;
+  return 10 * exp;
 }
-const compacto = (v) => (Math.abs(v) >= 1000 ? `${dec(v / 1000, 1)} k` : dec(v, Math.abs(v) < 10 && v % 1 ? 1 : 0));
-
-function barraPath(x, y, w, h, redondeo) {
+const compacto = (v) => (Math.abs(v) >= 1000 ? `${dec(v / 1000, 1)} k` : dec(v, 0));
+function columna(x, y, w, h) {
   if (h <= 0) return "";
-  const r = Math.min(redondeo ? 4 : 0, h, w / 2);
-  return `M${x},${y + h}V${y + r}${r ? `Q${x},${y} ${x + r},${y}` : ""}H${x + w - r}${r ? `Q${x + w},${y} ${x + w},${y + r}` : ""}V${y + h}Z`;
+  const r = Math.min(4, h, w / 2);
+  return `M${x},${y + h}V${y + r}Q${x},${y} ${x + r},${y}H${x + w - r}Q${x + w},${y} ${x + w},${y + r}V${y + h}Z`;
 }
 
-function marcoGrafico({ id, alto, n, yMax, paso, fmtY, titulo, W }) {
-  const pl = 52, pr = 12, pt = 10, pb = 26;
-  const ancho = W - pl - pr, banda = ancho / n, h = alto - pt - pb;
-  const X = (i) => pl + banda * i, Y = (v) => pt + h - (v / yMax) * h;
-  let grid = "";
-  for (let v = 0; v <= yMax + 1e-9; v += paso) grid += `<line x1="${pl}" x2="${W - pr}" y1="${Y(v)}" y2="${Y(v)}" class="g-grid"/><text x="${pl - 8}" y="${Y(v) + 4}" class="g-eje" text-anchor="end">${fmtY(v)}</text>`;
-  return { W, pl, pr, pt, pb, h, banda, X, Y, alto, abrir: `<svg viewBox="0 0 ${W} ${alto}" class="grafico" id="${id}" role="img" aria-label="${esc(titulo)}">${grid}`, cerrar: "</svg>" };
-}
-
-function pintarGraficos(res) {
-  const g = res.periodos, n = g.length;
-  const cats = CATEGORIAS.filter((k) => g.some((p) => p.cat[k.id] > 1e-9));
-  const etq = (p) => (p.dias === 1 ? fCorta(p.desde) : `${fCorta(p.desde)}–${fCorta(p.hasta)}`);
-  const b = estadoVista.el.querySelector("#b-graficos");
-  const W = Math.max(300, Math.min(1100, (b.clientWidth || 760) - 42));
-  const ejeX = (m) => { const cadaEtq = Math.max(1, Math.ceil((res.granularidad === "semana" ? 84 : 44) / m.banda)); return g.map((p, i) => (i % cadaEtq === 0 ? `<text x="${m.X(i) + m.banda / 2}" y="${m.alto - 8}" class="g-eje" text-anchor="middle">${etq(p)}</text>` : "")).join(""); };
-  const resaltes = (m) => g.map((p, i) => `<rect class="g-hl" data-i="${i}" x="${m.X(i)}" y="${m.pt}" width="${m.banda}" height="${m.h}"/>`).join("");
-  const golpes = (m) => g.map((p, i) => `<rect class="g-hit" data-i="${i}" x="${m.X(i)}" y="0" width="${m.banda}" height="${m.alto}"/>`).join("");
-  const anchoBarra = (m) => Math.max(4, Math.min(24, m.banda * 0.62));
-
-  // 1. Costo por categoría (apilado) + línea de la propuesta en régimen
-  const e1 = escalaNice(Math.max(...g.map((p) => Math.max(p.total, p.propuesta))));
-  const m1 = marcoGrafico({ id: "g-costo", alto: 230, n, yMax: e1.max, paso: e1.paso, fmtY: (v) => compacto(v), titulo: "Costo de inventario por período, por categoría", W });
-  let barras1 = "";
-  g.forEach((p, i) => {
-    const w = anchoBarra(m1), x = m1.X(i) + (m1.banda - w) / 2;
-    let base = 0;
-    const visibles = cats.filter((k) => p.cat[k.id] > 1e-9);
-    visibles.forEach((k, j) => {
-      const v = p.cat[k.id], y0 = m1.Y(base + v), y1 = m1.Y(base);
-      const alto = Math.max(0, y1 - y0 - (j < visibles.length - 1 ? 2 : 0));
-      barras1 += `<path d="${barraPath(x, y0 + (j < visibles.length - 1 ? 2 : 0), w, alto, j === visibles.length - 1)}" fill="${COLOR[k.id]}"/>`;
-      base += v;
-    });
+// Series acumuladas por período: costo (USD) y entregas cumplidas (%), hoy y propuesta.
+function acumulados(g) {
+  let cA = 0, cP = 0, lA = 0, okA = 0, lP = 0, okP = 0;
+  return g.map((p) => {
+    cA += p.total; cP += p.propuesta; lA += p.lA; okA += p.okA; lP += p.lP; okP += p.okP;
+    return { cA, cP, oA: lA ? okA / lA : null, oP: lP ? okP / lP : null, lA, okA, lP, okP };
   });
-  const linProp = g.map((p, i) => `${i ? "L" : "M"}${m1.X(i)},${m1.Y(p.propuesta)}H${m1.X(i) + m1.banda}`).join("");
-  const svg1 = m1.abrir + resaltes(m1) + barras1 + `<path d="${linProp}" class="g-prop"/>`
-    + `<text x="${m1.X(n - 1) + m1.banda - 2}" y="${m1.Y(g[n - 1].propuesta) - 6}" class="g-etq" text-anchor="end">Propuesta</text>` + ejeX(m1) + golpes(m1) + m1.cerrar;
+}
 
-  // 2. Retiros por ventas (unidades)
-  const e2 = escalaNice(Math.max(...g.map((p) => p.ventas)));
-  const m2 = marcoGrafico({ id: "g-ventas", alto: 150, n, yMax: e2.max, paso: e2.paso, fmtY: compacto, titulo: "Retiros por ventas por período, en unidades", W });
-  const barras2 = g.map((p, i) => { const w = anchoBarra(m2), x = m2.X(i) + (m2.banda - w) / 2; return `<path d="${barraPath(x, m2.Y(p.ventas), w, m2.Y(0) - m2.Y(p.ventas), true)}" class="g-ventas"/>`; }).join("");
-  const svg2 = m2.abrir + resaltes(m2) + barras2 + ejeX(m2) + golpes(m2) + m2.cerrar;
-
-  // 3. OTIF simulado (0–100 %)
-  const m3 = marcoGrafico({ id: "g-otif", alto: 160, n, yMax: 1, paso: 0.25, fmtY: (v) => `${Math.round(v * 100)} %`, titulo: "OTIF simulado por período", W });
-  const linea = (campo) => { let d = "", abierto = false; g.forEach((p, i) => { const v = p[campo]; if (v === null) { abierto = false; return; } d += `${abierto ? "L" : "M"}${m3.X(i) + m3.banda / 2},${m3.Y(v)}`; abierto = true; }); return d; };
-  const puntos = (campo, clase) => g.map((p, i) => (p[campo] === null ? "" : `<circle cx="${m3.X(i) + m3.banda / 2}" cy="${m3.Y(p[campo])}" r="4" class="${clase}"/>`)).join("");
-  const svg3 = m3.abrir + resaltes(m3) + `<path d="${linea("otifActual")}" class="g-l-act"/>${puntos("otifActual", "g-p-act")}<path d="${linea("otifPropuesta")}" class="g-l-prop"/>${puntos("otifPropuesta", "g-p-prop")}` + ejeX(m3) + golpes(m3) + m3.cerrar;
-  const igualOtif = g.every((p) => p.otifActual === p.otifPropuesta);
-  const sinLineas = g.filter((p) => p.lA === 0).length;
-
-  const nota = res.variacion === 0 ? "con las ventas registradas" : `con ventas ${res.variacion > 0 ? "+" : ""}${res.variacion} %`;
-  b.innerHTML = `<div class="bloque-cab"><h2>Costo, retiros y servicio por ${res.granularidad === "semana" ? "semana" : "día"}</h2>
-      <p class="bloque-sub">Situación actual ${nota}. Los tres gráficos comparten el eje de fechas.</p></div>
-    <div class="graficos" id="graficos">
-      <figure><figcaption><b>Costo de inventario</b> en USD por período
-        <span class="leyenda-g">${cats.map((k) => `<span><i style="background:${COLOR[k.id]}"></i>${esc(k.t)}</span>`).join("")}<span><i class="i-linea"></i>Propuesta en régimen (promedio por período)</span></span></figcaption>${svg1}</figure>
-      <figure><figcaption><b>Retiros por ventas</b> en unidades${res.variacion ? ` (registradas × ${dec(res.f, 2)})` : ""}</figcaption>${svg2}</figure>
-      <figure><figcaption><b>OTIF simulado</b> en % de líneas entregadas completas el mismo día
-        <span class="leyenda-g"><span><i class="i-act"></i>Actual</span><span><i class="i-prop"></i>Propuesta</span></span>
-        ${igualOtif ? `<span class="g-aviso">Las dos líneas coinciden en todos los períodos con ventas.</span>` : ""}
-        ${sinLineas ? `<span class="g-aviso">${sinLineas} período(s) sin ventas: sin punto de OTIF.</span>` : ""}</figcaption>${svg3}</figure>
-      <div class="g-tip" id="g-tip" hidden></div>
-    </div>
-    <details class="traza"><summary>Cómo se calcula</summary><ul>
-      <li><b>Capital inmovilizado</b> = stock del día × costo unitario × ${dec(res.P.v("tasa_capital"), 2)} % ÷ 365, sumado por día.</li>
-      <li><b>Almacenamiento</b> = stock del día × costo unitario × ${dec(res.P.v("tasa_almacenamiento"), 2)} % ÷ 365. <b>Obsolescencia</b>: igual, con ${dec(res.P.v("tasa_obsolescencia"), 2)} %.</li>
-      <li><b>Órdenes de compra</b> = recepciones por orden de compra del día × ${usd(res.P.v("costo_orden"))}. En los datos, cada línea de ingreso es una orden.</li>
-      <li><b>Devoluciones</b> = por cada retorno: costo por evento del motivo + cantidad × costo unitario × % de valor perdido del motivo.</li>
-      <li><b>Manipulación</b> = unidades movidas × ${usd(res.P.v("costo_manipulacion"))}. <b>Quiebre</b> = unidades no entregadas × ${res.P.v("costo_quiebre") === null ? "costo faltante (no se monetiza)" : usd(res.P.v("costo_quiebre"))}.</li>
-      <li><b>Propuesta en régimen</b> = costo total de la propuesta del período ÷ ${res.series.L} días × días del período (no es una trayectoria simulada día por día).</li>
-      <li><b>OTIF simulado</b>: cada retiro por venta registrado es una línea de pedido para ese día. Se entrega completa si hay stock suficiente; si no, falla la línea y la diferencia se pierde (no se acumula). Actual: se repiten las recepciones, retornos y ajustes registrados. Propuesta: arranca con el stock objetivo y repone Q cuando la posición llega al punto de reorden; el pedido llega a los días del plazo de reposición.</li>
-      <li>Stock del día = stock al inicio del período + movimientos registrados hasta ese día (todos los tipos). Fuente: movimientos del ${fLarga(res.series.dias[0])} al ${fLarga(res.series.dias[res.series.L - 1])}.</li>
-    </ul></details>
-    <details class="traza"><summary>Ver los datos en tabla</summary>
-      ${tabla([{ t: "Período", html: (p) => esc(p.dias === 1 ? fLarga(p.desde) : `${fLarga(p.desde)} – ${fLarga(p.hasta)}`) },
-        ...cats.map((k) => ({ t: k.t, num: true, html: (p) => usd(p.cat[k.id]) })),
-        { t: "Total actual", num: true, html: (p) => `<b>${usd(p.total)}</b>` }, { t: "Propuesta (régimen)", num: true, html: (p) => usd(p.propuesta) },
-        { t: "Retiros (un.)", num: true, html: (p) => dec(p.ventas, 1) }, { t: "Líneas", num: true, html: (p) => num(p.lA) },
-        { t: "OTIF actual", num: true, html: (p) => pct(p.otifActual) }, { t: "OTIF propuesta", num: true, html: (p) => pct(p.otifPropuesta) }], g)}
-    </details>`;
-
-  // Hover: resalta el mismo período en los tres gráficos y muestra el detalle
-  const cont = b.querySelector("#graficos"), tip = b.querySelector("#g-tip");
-  const mostrar = (i, ev) => {
-    const p = g[i];
-    cont.querySelectorAll(".g-hl").forEach((r) => r.classList.toggle("on", r.dataset.i === String(i)));
-    tip.innerHTML = `<b>${esc(p.dias === 1 ? fLarga(p.desde) : `${fLarga(p.desde)} – ${fLarga(p.hasta)}`)}</b>
-      ${cats.filter((k) => p.cat[k.id] > 1e-9).map((k) => `<div><i style="background:${COLOR[k.id]}"></i>${esc(k.t)}<span>${usd(p.cat[k.id])}</span></div>`).join("")}
-      <div class="tip-tot">Total actual<span>${usd(p.total)}</span></div><div>Propuesta (régimen)<span>${usd(p.propuesta)}</span></div>
-      <div>Retiros<span>${dec(p.ventas, 1)} un.</span></div>
-      <div>OTIF actual / propuesta<span>${pct(p.otifActual)} / ${pct(p.otifPropuesta)}</span></div>`;
-    tip.hidden = false;
-    const r = cont.getBoundingClientRect(), x = ev.clientX - r.left, y = ev.clientY - r.top;
-    const tw = tip.offsetWidth;
-    tip.style.left = `${Math.max(4, Math.min(r.width - tw - 4, x + 14 + tw > r.width ? x - tw - 14 : x + 14))}px`;
-    tip.style.top = `${Math.max(4, y - 20)}px`;
+function pintarGrafico(res) {
+  const g = res.periodos, n = g.length, ac = acumulados(g);
+  const b = estadoVista.el.querySelector("#b-grafico");
+  const movil = (b.clientWidth || 760) < 560;
+  const W = Math.max(300, Math.min(1100, (b.clientWidth || 760) - (movil ? 28 : 40)));
+  const pl = movil ? 34 : 48, pr = movil ? 84 : 132, ancho = W - pl - pr, banda = ancho / n;
+  const X = (i) => pl + banda * i, Xc = (i) => X(i) + banda / 2;
+  const wCol = Math.max(3, Math.min(24, banda * 0.55));
+  // Tres paneles con su propia escala (nunca dos ejes en el mismo panel)
+  const p1 = { y: 26, h: movil ? 70 : 80 }, p2 = { y: p1.y + p1.h + 50, h: movil ? 70 : 80 }, p3 = { y: p2.y + p2.h + 50, h: movil ? 96 : 110 };
+  const H = p3.y + p3.h + 26;
+  const mV = escalaNice(Math.max(...g.map((p) => p.ventas)));
+  const otifs = ac.flatMap((a) => [a.oA, a.oP]).filter((x) => x !== null);
+  const oMin = Math.min(0.9, Math.floor(Math.min(...otifs, 1) * 10) / 10);
+  const mC = escalaNice(Math.max(ac[n - 1].cA, ac[n - 1].cP));
+  const YV = (v) => p1.y + p1.h - (v / mV) * p1.h;
+  const YO = (v) => p2.y + p2.h - ((v - oMin) / (1 - oMin)) * p2.h;
+  const YC = (v) => p3.y + p3.h - (v / mC) * p3.h;
+  const linea = (val, Y) => { let d = "", abierto = false; ac.forEach((a, i) => { const v = val(a); if (v === null) { abierto = false; return; } d += `${abierto ? "L" : "M"}${Xc(i)},${Y(v)}`; abierto = true; }); return d; };
+  const grid = (Y, v, txt) => `<line x1="${pl}" x2="${W - pr + 8}" y1="${Y(v)}" y2="${Y(v)}" class="g-grid"/><text x="${pl - 6}" y="${Y(v) + 4}" class="g-eje" text-anchor="end">${txt}</text>`;
+  // Etiquetas al final de las líneas; si se pisan, una sola etiqueta para las dos
+  const fin = (yA, yB, txtA, txtB, txtAmbas) => {
+    const x = W - pr + 12;
+    if (Math.abs(yA - yB) < 2) return `<text x="${x}" y="${yA + 4}" class="g-etq">${txtAmbas}</text>`;
+    let a = yA, bb = yB; if (Math.abs(a - bb) < 30) { const m = (a + bb) / 2; a = m + (a > bb ? 15 : -15); bb = m + (bb >= yA ? 15 : -15); }
+    return `<text x="${x}" y="${a + 4}" class="g-etq"><tspan class="g-etq-s">${nomHoy}</tspan> ${txtA}</text><text x="${x}" y="${bb + 4}" class="g-etq"><tspan class="g-etq-s">${nomProp}</tspan> ${txtB}</text>`;
   };
+  const u = ac[n - 1];
+  const nomHoy = "Hoy", nomProp = movil ? "Prop." : "Propuesta", monto = movil ? (v) => Math.round(v).toLocaleString("es-AR") : usd0;
+  let s = `<svg viewBox="0 0 ${W} ${H}" class="grafico" id="g-costo" aria-hidden="true">`;
+  // Panel 1: ventas (columnas)
+  s += `<text x="0" y="${p1.y - 12}" class="g-tit">Ventas, unidades por ${res.granularidad === "semana" ? "semana" : "día"}${res.variacion ? ` (registradas ${signoVar(res.variacion)})` : ""}</text>`;
+  s += grid(YV, 0, "0") + grid(YV, mV, compacto(mV));
+  const iMax = g.reduce((k, p, i) => (p.ventas > g[k].ventas ? i : k), 0);
+  g.forEach((p, i) => { s += `<path d="${columna(Xc(i) - wCol / 2, YV(p.ventas), wCol, YV(0) - YV(p.ventas))}" class="g-col-ventas"/>`; });
+  if (g[iMax].ventas > 0 && g[iMax].ventas < mV) s += `<text x="${Xc(iMax)}" y="${YV(g[iMax].ventas) - 5}" class="g-etq" text-anchor="middle">${dec(g[iMax].ventas, 0)}</text>`;
+  s += `<text x="${W - pr + 12}" y="${p1.y + p1.h / 2 + 4}" class="g-etq"><tspan class="g-etq-s">Total</tspan> ${dec(res.tot.ventas, 0)}</text>`;
+  // Panel 2: entregas cumplidas acumuladas
+  s += `<text x="0" y="${p2.y - 12}" class="g-tit">Entregas que se cumplen, acumulado</text>`;
+  s += grid(YO, oMin, `${dec(oMin * 100, 0)} %`) + grid(YO, 1, "100 %");
+  s += `<path d="${linea((a) => a.oA, YO)}" class="g-l g-l-hoy"/><path d="${linea((a) => a.oP, YO)}" class="g-l g-l-prop"/>`;
+  g.forEach((p, i) => { if (p.lP > p.okP && ac[i].oP !== null) s += `<circle cx="${Xc(i)}" cy="${YO(ac[i].oP)}" r="5" class="g-falta"/>`; });
+  if (u.oA !== null && u.oP !== null) s += fin(YO(u.oA), YO(u.oP), pct(u.oA), pct(u.oP), `<tspan class="g-etq-s">Ambas</tspan> ${pct(u.oP)}`);
+  // Panel 3: costo acumulado
+  s += `<text x="0" y="${p3.y - 12}" class="g-tit">Costo del inventario acumulado, USD</text>`;
+  s += grid(YC, 0, "0") + grid(YC, mC / 2, compacto(mC / 2)) + grid(YC, mC, compacto(mC));
+  s += `<path d="${linea((a) => a.cA, YC)}" class="g-l g-l-hoy"/><path d="${linea((a) => a.cP, YC)}" class="g-l g-l-prop"/>`;
+  s += fin(YC(u.cA), YC(u.cP), monto(u.cA), monto(u.cP), `<tspan class="g-etq-s">Ambas</tspan> ${monto(u.cP)}`);
+  // Eje de fechas compartido
+  const cada = Math.max(1, Math.ceil((res.granularidad === "semana" ? 92 : 44) / banda));
+  s += g.map((p, i) => (i % cada === 0 || i === n - 1 && (n - 1) % cada > cada / 2 ? `<text x="${Xc(i)}" y="${H - 6}" class="g-eje" text-anchor="middle">${p.dias === 1 ? fCorta(p.desde) : `${fCorta(p.desde)}–${fCorta(p.hasta)}`}</text>` : "")).join("");
+  // Cursor: línea vertical que cruza los tres paneles
+  s += `<g id="g-cursor" class="g-cursor" visibility="hidden"><line y1="${p1.y - 4}" y2="${p3.y + p3.h}" class="g-cursor-l"/>
+    <circle r="4.5" class="g-pt g-pt-hoy" data-y="oA"/><circle r="4.5" class="g-pt g-pt-prop" data-y="oP"/>
+    <circle r="4.5" class="g-pt g-pt-hoy" data-y="cA"/><circle r="4.5" class="g-pt g-pt-prop" data-y="cP"/></g>`;
+  s += g.map((p, i) => `<rect class="g-hit" data-i="${i}" x="${X(i)}" y="0" width="${banda}" height="${H}"/>`).join("");
+  s += "</svg>";
+
+  const faltas = g.filter((p) => p.lP > p.okP);
+  b.innerHTML = `<div class="bloque-cab"><h2>Día por día: ventas, entregas y costo</h2>
+      <p class="bloque-sub">Las tres franjas comparten las fechas: leé una columna de arriba abajo. ${movil ? "Tocá" : "Pasá el cursor o tocá"} una fecha para ver los valores${movil ? "" : "; con el teclado, flechas izquierda y derecha"}.</p></div>
+    <div class="leyenda-g" aria-hidden="true"><span><i class="sw sw-ventas"></i>Ventas</span><span><i class="sw-l sw-l-hoy"></i>Hoy</span><span><i class="sw-l sw-l-prop"></i>Propuesta</span>${faltas.length ? `<span><i class="sw-falta"></i>Día con faltante (propuesta)</span>` : ""}</div>
+    <div class="graficos" id="graficos" tabindex="0" role="group" aria-label="Gráfico de ventas, entregas y costo por fecha. Usá las flechas para recorrer las fechas; los datos están también en la tabla de abajo.">${s}<div class="g-tip" id="g-tip" role="status" hidden></div></div>
+    ${faltas.length ? `<p class="g-nota"><b>La propuesta no alcanza a entregar todo</b> en ${faltas.map((p) => p.dias === 1 ? fCorta(p.desde) : `${fCorta(p.desde)}–${fCorta(p.hasta)}`).join(", ")}: ${num(res.tot.faltaPropuesta)} un. sin entregar en el período.</p>` : ""}
+    <p class="g-nota">Hoy: stock y recepciones registrados. Propuesta: stock de seguridad + lote, con su costo en régimen repartido por igual en cada día. Entregas simuladas: cada retiro por venta es un pedido del mismo día.</p>
+    <details class="traza"><summary>Ver los datos del gráfico en una tabla</summary>${tabla([
+      { t: "Fecha", html: (p) => (p.dias === 1 ? fLarga(p.desde) : `${fLarga(p.desde)} – ${fLarga(p.hasta)}`) },
+      { t: "Ventas, un.", num: true, html: (p) => dec(p.ventas, 0) },
+      { t: "Entregas hoy", num: true, html: (p, i) => (p.lA ? `${p.okA} de ${p.lA}` : "—") },
+      { t: "Entregas propuesta", num: true, html: (p) => (p.lP ? `${p.okP} de ${p.lP}` : "—") },
+      { t: "Acum. hoy", num: true, html: (p) => pct(ac[g.indexOf(p)].oA) },
+      { t: "Acum. propuesta", num: true, html: (p) => pct(ac[g.indexOf(p)].oP) },
+      { t: "Costo hoy", num: true, html: (p) => usd(p.total) },
+      { t: "Costo propuesta", num: true, html: (p) => usd(p.propuesta) },
+      { t: "Acum. hoy", num: true, html: (p) => usd(ac[g.indexOf(p)].cA) },
+      { t: "Acum. propuesta", num: true, html: (p) => usd(ac[g.indexOf(p)].cP) },
+    ], g)}</details>`;
+
+  const cont = b.querySelector("#graficos"), tip = b.querySelector("#g-tip"), svg = cont.querySelector("svg"), cursor = svg.querySelector("#g-cursor");
+  const escala = () => svg.getBoundingClientRect().width / W;
+  const entregas = (l, ok) => (l === 0 ? "sin ventas" : ok === l ? `${ok} de ${l} completas` : `${ok} de ${l}: faltó en ${l - ok}`);
+  const fila = (cl, t, v) => { const d = document.createElement("div"); if (cl) { const i = document.createElement("i"); i.className = cl; d.append(i); } d.append(document.createTextNode(t)); const sp = document.createElement("span"); sp.textContent = v; d.append(sp); return d; };
+  const mostrar = (i) => {
+    i = Math.max(0, Math.min(n - 1, i)); estadoVista.sel = i;
+    const p = g[i], a = ac[i];
+    cursor.setAttribute("visibility", "visible");
+    cursor.querySelector("line").setAttribute("x1", Xc(i)); cursor.querySelector("line").setAttribute("x2", Xc(i));
+    const ys = { oA: a.oA === null ? null : YO(a.oA), oP: a.oP === null ? null : YO(a.oP), cA: YC(a.cA), cP: YC(a.cP) };
+    cursor.querySelectorAll("circle").forEach((c) => { const y = ys[c.dataset.y]; c.setAttribute("cx", Xc(i)); c.setAttribute("cy", y ?? -20); c.setAttribute("visibility", y === null ? "hidden" : "visible"); });
+    const t = document.createElement("b"); t.textContent = p.dias === 1 ? fLarga(p.desde) : `${fLarga(p.desde)} – ${fLarga(p.hasta)}`;
+    const sec = (txt) => { const d = document.createElement("div"); d.className = "tip-sec"; d.textContent = txt; return d; };
+    tip.replaceChildren(t,
+      fila("tl tl-ventas", "Ventas", `${dec(p.ventas, 0)} un.`),
+      sec("Entregas ese día"), fila("tl tl-hoy", "Hoy", entregas(p.lA, p.okA)), fila("tl tl-prop", "Propuesta", entregas(p.lP, p.okP)),
+      sec("Entregas acumuladas"), fila("tl tl-hoy", "Hoy", pct(a.oA)), fila("tl tl-prop", "Propuesta", pct(a.oP)),
+      sec("Costo acumulado"), fila("tl tl-hoy", "Hoy", usd(a.cA)), fila("tl tl-prop", "Propuesta", usd(a.cP)));
+    tip.hidden = false;
+    const k = escala(), cw = cont.clientWidth, tw = tip.offsetWidth, x = Xc(i) * k;
+    tip.style.left = `${Math.max(0, Math.min(cw - tw, x + 16 + tw > cw ? x - tw - 16 : x + 16))}px`;
+    tip.style.top = `${Math.max(0, p2.y * k - 30)}px`;
+  };
+  const ocultar = () => { tip.hidden = true; cursor.setAttribute("visibility", "hidden"); };
   cont.querySelectorAll(".g-hit").forEach((h) => {
-    h.addEventListener("pointermove", (ev) => mostrar(Number(h.dataset.i), ev));
-    h.addEventListener("pointerdown", (ev) => mostrar(Number(h.dataset.i), ev));
+    h.addEventListener("pointermove", () => mostrar(Number(h.dataset.i)));
+    h.addEventListener("pointerdown", () => mostrar(Number(h.dataset.i)));
   });
-  cont.addEventListener("pointerleave", () => { tip.hidden = true; cont.querySelectorAll(".g-hl").forEach((r) => r.classList.remove("on")); });
+  cont.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse") ocultar(); });
+  const fuera = (e) => { if (!document.body.contains(cont)) { document.removeEventListener("pointerdown", fuera); return; } if (!cont.contains(e.target)) ocultar(); };
+  document.addEventListener("pointerdown", fuera);
+  cont.addEventListener("focus", () => mostrar(estadoVista.sel ?? n - 1));
+  cont.addEventListener("blur", ocultar);
+  cont.addEventListener("keydown", (e) => {
+    const paso = { ArrowLeft: -1, ArrowRight: 1, Home: -n, End: n }[e.key];
+    if (paso === undefined) { if (e.key === "Escape") ocultar(); return; }
+    e.preventDefault(); mostrar((estadoVista.sel ?? n - 1) + paso);
+  });
+}
+
+// ---------------------------------------------------------------------
+// En qué se va el costo (hoy contra propuesta)
+// ---------------------------------------------------------------------
+function pintarCategorias(res) {
+  const t = res.tot;
+  const cats = CATEGORIAS.filter((k) => t.actual[k.id] > 0.005 || t.propuesta[k.id] > 0.005);
+  const max = Math.max(...cats.map((k) => Math.max(t.actual[k.id], t.propuesta[k.id])), 1);
+  const barra = (v, cl) => `<div class="cb-fila"><div class="cb-pista"><div class="cb-barra ${cl}" style="width:${(v / max) * 100}%"></div></div><span class="cb-val">${usd0(v)}</span></div>`;
+  estadoVista.el.querySelector("#b-categorias").innerHTML = `<div class="bloque-cab"><h2>En qué se va el costo</h2>
+      <p class="bloque-sub">Total del período por tipo de costo.</p></div>
+    <div class="leyenda-g"><span><i class="sw sw-hoy"></i>Hoy</span><span><i class="sw sw-prop"></i>Propuesta</span></div>
+    <div class="cb">${cats.map((k) => `<div class="cb-item"><div class="cb-nombre">${esc(k.t)}</div>${barra(t.actual[k.id], "hoy")}${barra(t.propuesta[k.id], "prop")}</div>`).join("")}</div>
+    <p class="small muted">Manipulación, obsolescencia, scrap y retrabajo no suman costo hoy; el quiebre no se monetiza (falta el dato). Ver «Costo por producto».</p>`;
+}
+
+// ---------------------------------------------------------------------
+// Qué hacer con cada producto
+// ---------------------------------------------------------------------
+function accion(x) {
+  const p = x.pol;
+  if (!p.calculable) return { cl: "a-falta", t: "Falta dato", d: `Falta: ${p.faltan.join(", ")}.` };
+  if (p.sinDemanda) return { cl: "a-nd", t: "Sin ventas: no reponer", d: `No se vendió en el período. Hay ${num(x.stockFin)} un. inmovilizadas.` };
+  if (x.stockFin <= p.ROP) return { cl: "a-pedir", t: `Pedir ${num(p.Q)} un.`, d: `Stock ${num(x.stockFin)} ≤ punto de pedido ${num(p.ROP)}.` };
+  if (x.stockFin > p.objetivo) return { cl: "a-exceso", t: `Sobran ${num(x.stockFin - p.objetivo)} un.`, d: `Stock ${num(x.stockFin)} > objetivo ${num(p.objetivo)}: no comprar hasta bajar al punto de pedido.` };
+  return { cl: "a-ok", t: "En rango", d: `Stock entre el punto de pedido (${num(p.ROP)}) y el objetivo (${num(p.objetivo)}).` };
+}
+
+function pintarAcciones(res) {
+  const conVentas = res.filas.filter((x) => !x.pol.sinDemanda);
+  const todasBaja = conVentas.length > 0 && conVentas.every((x) => x.pol.bajaConfianza);
+  const orden = { "a-pedir": 0, "a-falta": 1, "a-exceso": 2, "a-ok": 3, "a-nd": 4 };
+  const filas = res.filas.map((x) => ({ ...x, acc: accion(x) })).sort((p, q) => orden[p.acc.cl] - orden[q.acc.cl]);
+  const n = (cl) => filas.filter((x) => x.acc.cl === cl).length;
+  estadoVista.el.querySelector("#b-acciones").innerHTML = `<div class="bloque-cab"><h2>Qué hacer con cada producto</h2>
+      <p class="bloque-sub">Stock al ${fLarga(res.series.dias[res.series.L - 1])} contra la política propuesta: ${n("a-pedir")} para pedir, ${n("a-exceso")} con sobrante, ${n("a-ok")} en rango${n("a-nd") ? `, ${n("a-nd")} sin ventas` : ""}.${todasBaja ? " Todos vendieron pocos días: las cantidades son orientativas." : ""}</p></div>
+    ${tabla([
+      { t: "Producto", html: (x) => `<b>${esc(x.prod.codigo)}</b><div class="nota">${esc(x.prod.descripcion)}</div>` },
+      { t: "Acción", html: (x) => `<span class="accion-chip ${x.acc.cl}">${esc(x.acc.t)}</span><div class="nota">${esc(x.acc.d)}</div>${!todasBaja && x.pol.bajaConfianza && !x.pol.sinDemanda ? `<div class="nota">Pocas ventas: orientativo.</div>` : ""}` },
+      { t: "Stock", num: true, html: (x) => num(x.stockFin) },
+      { t: "Pedir cuando baje a", num: true, html: (x) => (x.pol.calculable && !x.pol.sinDemanda ? num(x.pol.ROP) : "—") },
+      { t: "Máximo", num: true, html: (x) => (x.pol.calculable && !x.pol.sinDemanda ? num(x.pol.objetivo) : "—") },
+    ], filas)}`;
+}
+
+// ---------------------------------------------------------------------
+// Límites y cómo se calcula
+// ---------------------------------------------------------------------
+function pintarLimites(res) {
+  const P = res.P;
+  estadoVista.el.querySelector("#b-limites").innerHTML = `
+    <h3>Límites de este resultado</h3><ul class="lista">${res.conclusion.limites.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>
+    ${res.conclusion.detalle.length > 3 ? `<h3>Más conclusiones</h3><ul class="lista">${res.conclusion.detalle.slice(3).map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
+    <h3>Cómo se calcula</h3><ul class="lista">
+      <li><b>Costo de hoy</b> = capital (stock del día × costo unitario × ${dec(P.v("tasa_capital"), 2)} % ÷ 365) + almacenamiento (igual con ${dec(P.v("tasa_almacenamiento"), 2)} %) + órdenes de compra (${usd(P.v("costo_orden"))} por recepción) + devoluciones (costo por evento + valor perdido según el motivo).</li>
+      <li><b>Propuesta</b>: stock de seguridad SS = z × σ × √plazo; pedir cuando el stock baja a ROP = demanda diaria × plazo + SS; lote Q = máx(lote económico, lote mínimo); máximo = SS + Q. Su costo usa el stock promedio SS + Q ÷ 2 y la cantidad de pedidos (retiros ÷ Q).</li>
+      <li><b>Entregas (OTIF)</b>: cada retiro por venta registrado es un pedido de ese día. Se entrega completo si hay stock; si no, falta. Hoy: con las recepciones registradas. Propuesta: arranca en el máximo y repone Q al llegar al punto de pedido; el pedido llega a los días del plazo.</li>
+      <li>Período: ${fLarga(res.series.dias[0])} al ${fLarga(res.series.dias[res.series.L - 1])} (${res.series.L} días). Fuente: stock inicial y movimientos registrados.</li>
+    </ul>`;
 }
 
 // ---------------------------------------------------------------------

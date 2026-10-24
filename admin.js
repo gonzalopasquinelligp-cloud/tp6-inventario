@@ -1,6 +1,6 @@
 // Administración: usuarios y roles, productos, posiciones, QR y fecha operativa.
-import { rpc, leer, estado, cargarMaestros } from "./api.js";
-import { esc, aviso, ICON, fechaHora, tabla, pedir, toast } from "./ui.js";
+import { rpc, leer, estado, cargarMaestros } from "./api.js?v=202610241509";
+import { esc, aviso, ICON, fechaHora, tabla, pedir, toast } from "./ui.js?v=202610241509";
 
 export async function render(el) {
   const [usuarios, cfg, audit] = await Promise.all([

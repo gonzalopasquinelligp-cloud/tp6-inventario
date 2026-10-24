@@ -1,6 +1,6 @@
 // Componentes reutilizables: mapa del rack y seguimiento de sincronización.
-import { esc, num, hora } from "./ui.js";
-import { estadoSync } from "./api.js";
+import { esc, num, hora } from "./ui.js?v=202610241509";
+import { estadoSync } from "./api.js?v=202610241509";
 
 // posiciones: filas de v_posiciones_estado. opciones.contadas: Set de posiciones contadas; opciones.alcance: Set
 export function rackHTML(posiciones, { contadas = null, alcance = null, detalle = true } = {}) {
