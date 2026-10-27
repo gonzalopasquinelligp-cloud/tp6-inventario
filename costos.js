@@ -1,8 +1,8 @@
 // Costo y servicio: tablero para decidir si se puede bajar el costo del inventario sin perder nivel de servicio.
 // Los datos vienen del servidor (analisis_datos); los cálculos están en modelo.js con sus fórmulas a la vista.
-import { rpc, puede, leer } from "./api.js?v=202610272255";
-import { esc, num, aviso, ICON, tabla, pedir, toast, descargarCSV, usd, dec, pct, origen, fechaHora, TZ } from "./ui.js?v=202610272255";
-import { analizar, zDeNS, CATEGORIAS, MOTIVOS } from "./modelo.js?v=202610272255";
+import { rpc, puede, leer } from "./api.js?v=202610272312";
+import { esc, num, aviso, ICON, tabla, pedir, toast, descargarCSV, usd, dec, pct, origen, fechaHora, TZ } from "./ui.js?v=202610272312";
+import { analizar, zDeNS, CATEGORIAS, MOTIVOS } from "./modelo.js?v=202610272312";
 
 const fCorta = (iso) => { const [, m, d] = iso.split("-"); return `${d}/${m}`; };
 const fLarga = (iso) => iso.split("-").reverse().join("/");
@@ -188,11 +188,13 @@ function pintarRespuesta(res) {
     return `<span class="fig-delta ${(d < 0) === mejorMenor ? "mejor" : "peor"}">${d > 0 ? "+" : "−"}${fmt(Math.abs(d))}${p}</span>`;
   };
   const formulas = [];
-  const figura = (serie, etiqueta, valor, hoy, dlt, formula) => { formulas.push([etiqueta, formula]); return `<div class="fig" tabindex="0" title="${esc(formula)}">
+  const figura = (serie, etiqueta, valor, hoy, dlt, formula, nota = "") => { formulas.push([etiqueta, formula]); return `<div class="fig" tabindex="0" title="${esc(formula)}">
       <div class="fig-t">${etiqueta}</div>
       <div class="fig-v">${valor}</div>
-      <div class="fig-c">Hoy ${hoy} ${dlt}</div>
+      <div class="fig-c">Hoy ${hoy} ${dlt}</div>${nota ? `
+      <div class="fig-f">${nota}</div>` : ""}
       </div>`; };
+  const sOrden = P.v("costo_orden");
   const porque = motivos(res);
   const cuenta = conteoOrigen(res);
   estadoVista.el.querySelector("#respuesta").innerHTML = `
@@ -207,9 +209,13 @@ function pintarRespuesta(res) {
       <button class="btn" type="button" data-ir="b-param">Revisar costos y supuestos<span class="resp-ir-n">${cuenta.supuesto} supuestos, ${cuenta.faltante} faltantes</span></button>
     </div>
     ${prueba ? `<p class="resp-escenario"><span class="org org-sim">Prueba</span> Escenario de prueba: ventas ${signoVar(res.variacion)}, nivel de servicio ${nsTxt(res)}. No se guarda.</p>` : ""}
-    <div class="figuras figuras-4" id="kpis" aria-label="Propuesta contra hoy">
+    <div class="figuras figuras-5" id="kpis" aria-label="Propuesta contra hoy">
       ${figura("prop", `Costo del inventario en ${res.series.L} días`, usd0(t.propuesta.total), usd0(t.actual.total), delta(t.actual.total, t.propuesta.total, true, usd0),
-        `Capital + almacenamiento + órdenes de compra + devoluciones, ${periodo}. Propuesta en régimen: stock promedio SS + Q ÷ 2.`)}
+        `Capital + almacenamiento + órdenes de compra + devoluciones, ${periodo}. Propuesta en régimen: stock promedio SS + Q ÷ 2.`,
+        `Capital, depósito, compras (${sOrden === null ? "costo por compra sin dato" : `${usd0(sOrden)} cada una, por producto`}) y devoluciones. No incluye el precio de la mercadería.`)}
+      ${figura("prop", "Mercadería en depósito, en promedio", usd0(t.valorPromPropuesta), usd0(t.valorPromActual), delta(t.valorPromActual, t.valorPromPropuesta, true, usd0),
+        `Promedio de los ${res.series.L} días del valor del stock de todos los productos (unidades × costo unitario). Propuesta: (SS + Q ÷ 2) × costo unitario.`,
+        "Lo que vale el stock de todos los productos, a costo de compra.")}
       ${figura("prop", "Entregas que se cumplen (OTIF)", pct(t.otifPropuesta), pct(t.otifActual), delta(t.otifActual, t.otifPropuesta, false, (x) => `${dec(x * 100, 1)} puntos`, false),
         `Líneas de venta entregadas completas ÷ ${t.lineas} líneas del período. Simulado: cada retiro por venta es un pedido de ese día.`)}
       ${figura("prop", "Unidades que faltarían", `${num(t.faltaPropuesta)}\u00a0un.`, `${num(t.faltaActual)}\u00a0un.`, delta(t.faltaActual, t.faltaPropuesta, true, (x) => `${num(x)}\u00a0un.`),
@@ -240,11 +246,12 @@ function accionCompra(res) {
   const t = res.tot, L = res.series.L;
   const sinVentas = res.filas.filter((x) => x.pol.calculable && x.pol.sinDemanda).map((x) => x.prod.codigo);
   const vA = t.valorPromActual, vP = t.valorPromPropuesta;
-  const stock = vP < vA - 0.005 ? `menos stock promedio (${usd0(vP)} contra ${usd0(vA)})`
-    : vP > vA + 0.005 ? `más stock promedio (${usd0(vP)} contra ${usd0(vA)})` : "el mismo stock promedio";
-  const entregas = t.otifPropuesta !== null && t.otifActual !== null && t.otifPropuesta >= t.otifActual - 1e-9 ? " y sin perder entregas" : "";
-  return `comprar cada producto cuando su stock baja al punto de pedido, siempre en el mismo lote${sinVentas.length ? `, y no reponer ${lista(sinVentas)} hasta que vuelvan a venderse` : ""}. `
-    + `Son ${cantOrd(t.ordenesPropuesta)} órdenes en ${L} días en lugar de ${cantOrd(t.ordenesActual)}, con ${stock}${entregas}.`;
+  const stock = vP < vA - 0.005 ? `${montoSigno(Math.round(vP) - Math.round(vA)).replace(/,00$/, "")}, menos plata parada`
+    : vP > vA + 0.005 ? `${montoSigno(Math.round(vP) - Math.round(vA)).replace(/,00$/, "")}, más mercadería` : "sin cambio";
+  return `comprar cada producto cuando su stock baja al punto de pedido, siempre en el mismo lote${sinVentas.length ? `, y no reponer ${lista(sinVentas)} hasta que vuelvan a venderse` : ""}.`
+    + `<span class="resp-cambia-dato">Compras en ${L} días: <b>hoy ${cantOrd(t.ordenesActual)} → propuesta ${cantOrd(t.ordenesPropuesta)}</b></span>`
+    + `<span class="resp-cambia-dato">Mercadería en depósito, en promedio: <b>hoy ${usd0(vA)} → propuesta ${usd0(vP)}</b> (${stock})</span>`
+    + `<span class="resp-cambia-dato">Entregas: <b>hoy ${pct(t.otifActual)} → propuesta ${pct(t.otifPropuesta)}</b></span>`;
 }
 
 // Por qué: de dónde sale la diferencia de costo, en términos de lo que se hace distinto.
@@ -253,15 +260,18 @@ function motivos(res) {
   const dO = t.propuesta.orden - t.actual.orden;
   const dS = ["capital", "almacenamiento", "obsolescencia"].reduce((a, k) => a + (t.propuesta[k] - t.actual[k]), 0);
   const nA = cantOrd(t.ordenesActual), nP = cantOrd(t.ordenesPropuesta);
+  const sOrden = res.P.v("costo_orden");
+  const porCompra = sOrden === null ? "" : ` (${usd0(sOrden)} por cada compra de un producto)`;
+  const vA = t.valorPromActual, vP = t.valorPromPropuesta, dV = Math.round(vP) - Math.round(vA);
   if (Math.abs(dO) >= 0.01) out.push(dO < 0
-    ? `<b>Se pide menos veces:</b> ${nP} órdenes en lugar de ${nA}, ${montoSigno(dO)} en costo de pedir.`
-    : `<b>Se pide más veces:</b> ${nP} órdenes en lugar de ${nA}, ${montoSigno(dO)} en costo de pedir.`);
+    ? `<b>Se pide menos veces:</b> hoy ${nA} compras → propuesta ${nP}. Pedir cuesta ${usd(-dO)} menos${porCompra}.`
+    : `<b>Se pide más veces:</b> hoy ${nA} compras → propuesta ${nP}. Pedir cuesta ${usd(dO)} más${porCompra}.`);
   if (Math.abs(dS) >= 0.01) out.push(dS < 0
-    ? `<b>Hay menos plata parada:</b> la mercadería en depósito vale en promedio ${usd0(t.valorPromPropuesta)} en lugar de ${usd0(t.valorPromActual)}; tenerla cuesta ${usd(Math.abs(dS))} menos en capital y almacenamiento.`
-    : `<b>Hay más mercadería en depósito:</b> vale en promedio ${usd0(t.valorPromPropuesta)} en lugar de ${usd0(t.valorPromActual)}; tenerla cuesta ${usd(dS)} más en capital y almacenamiento${dO < 0 && -dO > dS ? `, mucho menos que lo que se ahorra en órdenes` : ""}.`);
+    ? `<b>Hay menos plata parada:</b> mercadería en depósito, en promedio: hoy ${usd0(vA)} → propuesta ${usd0(vP)} (${montoSigno(dV).replace(/,00$/, "")}). Tenerla cuesta ${usd(-dS)} menos en capital y almacenamiento.`
+    : `<b>Hay más mercadería en depósito</b>, en promedio: hoy ${usd0(vA)} → propuesta ${usd0(vP)} (${montoSigno(dV).replace(/,00$/, "")}). Tenerla cuesta ${usd(dS)} más en capital y almacenamiento${dO < 0 && -dO > dS ? `, menos de lo que se ahorra en compras` : ""}.`);
   const eq = res.equilibrioOrden;
-  if (eq && eq.valor === null) out.push(`<b>La conclusión no depende del costo por orden:</b> la propuesta cuesta ${eq.propuestaSiempreMasBarata ? "menos" : "más"} que hoy con cualquier valor entre ${usd0(eq.desde)} y ${usd0(eq.hasta)}.`);
-  else if (eq) out.push(`<b>La conclusión depende del costo por orden:</b> con ${usd(eq.valor)} por orden las dos cuestan lo mismo; ${eq.propuestaMasCaraDebajo ? "por debajo" : "por encima"} la propuesta cuesta más. Hoy se usan ${usd(res.P.v("costo_orden") ?? 0)}.`);
+  if (eq && eq.valor === null) out.push(`<b>La conclusión no depende del costo por compra:</b> la propuesta cuesta ${eq.propuestaSiempreMasBarata ? "menos" : "más"} que hoy con cualquier valor entre ${usd0(eq.desde)} y ${usd0(eq.hasta)}.`);
+  else if (eq) out.push(`<b>La conclusión depende del costo por compra:</b> con ${usd(eq.valor)} por compra las dos cuestan lo mismo; ${eq.propuestaMasCaraDebajo ? "por debajo" : "por encima"} la propuesta cuesta más. Hoy se usan ${usd(res.P.v("costo_orden") ?? 0)}.`);
   const conFalta = res.filas.filter((x) => x.simP.unidadesFaltantes > 0);
   if (conFalta.length) out.push(`<b>Faltaría mercadería en</b> ${conFalta.map((x) => `${esc(x.prod.codigo)} (${num(x.simP.unidadesFaltantes)} un.)`).join(", ")}.`);
   return out;

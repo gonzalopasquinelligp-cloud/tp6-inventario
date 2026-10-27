@@ -1,7 +1,7 @@
 // Conciliación por POSICIÓN + PRODUCTO + LOTE, revisión de diferencias, ajustes y cierre.
-import { rpc, leer, puede } from "./api.js?v=202610272255";
+import { rpc, leer, puede } from "./api.js?v=202610272312";
 import { esc, num, signo, claseSigno, aviso, ICON, nuevoId, fechaHora, tabla, chip, CATEGORIAS, ESTADOS_REV, ESTADOS_JORNADA,
-         pedir, descargarCSV, toast } from "./ui.js?v=202610272255";
+         pedir, descargarCSV, toast } from "./ui.js?v=202610272312";
 
 export async function render(el, { params }) {
   if (params[0] && /^\d+$/.test(params[0])) return detalle(el, Number(params[0]));

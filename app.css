@@ -286,6 +286,10 @@ details.panel[open] > summary { margin-bottom: 12px; }
 .gs-cab { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: flex-end; justify-content: space-between; background: var(--panel); border: 1px solid var(--borde); border-radius: var(--radio); padding: 14px 18px; margin-bottom: 16px; }
 .gs-cab .cs-campo input[type=date] { width: auto; }
 .figuras.figuras-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.figuras.figuras-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.figuras-5 .fig-v { font-size: 1.9rem; }
+@media (max-width: 1400px) { .figuras.figuras-5 { grid-template-columns: repeat(3, minmax(0, 1fr)); } .figuras-5 .fig:nth-child(4) { border-left: 0; padding-left: 0; } .figuras-5 .fig:nth-child(n+4) { border-top: 1px solid var(--borde); } }
+@media (max-width: 560px) { .figuras.figuras-5 { grid-template-columns: minmax(0, 1fr); } .figuras-5 .fig-v { font-size: 1.75rem; } }
 .abc-A { --c: #184f95; --t: #fff; } .abc-B { --c: #3987e5; --t: #fff; } .abc-C { --c: #86b6ef; --t: #0b0b0b; }
 .xyz-X { --c: #eea079; --t: #0b0b0b; } .xyz-Y { --c: #d95926; --t: #0b0b0b; } .xyz-Z { --c: #9c3d15; --t: #fff; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .abc-A { --c: #9ec5f4; --t: #0b0b0b; } :root:not([data-theme="light"]) .abc-C { --c: #256abf; --t: #fff; } }
@@ -338,6 +342,8 @@ details.panel[open] > summary { margin-bottom: 12px; }
 .ver-frase.tono-no .resp-titulo { color: var(--error); }
 .resp-texto { font-size: 1.05rem; line-height: 1.45; max-width: 68ch; }
 .resp-cambia { margin: 0 0 12px; font-size: 1rem; line-height: 1.45; max-width: 75ch; padding: 10px 14px; border-left: 4px solid var(--s-prop); background: color-mix(in srgb, var(--s-prop) 8%, var(--panel)); border-radius: 0 var(--radio-chico) var(--radio-chico) 0; }
+.resp-cambia-dato { display: block; margin-top: 4px; font-size: .95rem; }
+.resp-cambia-dato:first-of-type { margin-top: 8px; }
 .resp-ir { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 18px; }
 .resp-ir .btn { white-space: normal; text-align: left; }
 .resp-ir-n { font-weight: 500; font-size: .85rem; opacity: .85; margin-left: 4px; }
@@ -521,6 +527,7 @@ tr.fila-actual td { background: var(--primario-suave); }
   .fig-t { grid-column: 1; }
   .fig-v { grid-column: 2; grid-row: 1 / span 2; font-size: 1.75rem; margin: 0; }
   .fig-c { grid-column: 1; }
+  .fig-f { grid-column: 1 / -1; max-width: none; }
   .fig-f { grid-column: 1 / -1; margin-top: 2px; }
   .bloque { padding: 14px; }
   .seccion > div { padding: 14px; }
