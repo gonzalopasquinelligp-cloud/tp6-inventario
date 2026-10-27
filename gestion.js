@@ -1,9 +1,9 @@
 // Tablero de gestión: valorización, rotación y clasificación ABC / XYZ del inventario.
 // Usa los mismos datos que «Costo y servicio» (analisis_datos); los cálculos están en modelo.js.
-import { rpc, leer } from "./api.js?v=202610272333";
-import { esc, num, aviso, ICON, tabla, descargarCSV, usd, dec, pct, origen, TZ } from "./ui.js?v=202610272333";
-import { clasificar } from "./modelo.js?v=202610272333";
-import { avisoSinDatos } from "./costos.js?v=202610272333";
+import { rpc, leer } from "./api.js?v=202610272358";
+import { esc, num, aviso, ICON, tabla, descargarCSV, usd, dec, pct, origen, TZ } from "./ui.js?v=202610272358";
+import { clasificar } from "./modelo.js?v=202610272358";
+import { avisoSinDatos } from "./costos.js?v=202610272358";
 
 const fLarga = (iso) => iso.split("-").reverse().join("/");
 const usd0 = (v) => (v === null || v === undefined ? "—" : `USD ${Math.round(v).toLocaleString("es-AR")}`);
@@ -49,7 +49,7 @@ async function cargar() {
   let datos, difs = null;
   try { datos = await rpc("analisis_datos", { p_desde: vista.desde || null, p_hasta: vista.hasta || null }); }
   catch (e) { el.querySelector("#g-msg").innerHTML = aviso("error", `No se pudieron leer los datos del período: ${esc(e.message)}. Revisá las fechas y tocá «Ver período».`); return; }
-  try { difs = await leer("v_diferencias", (q) => q, "jornada,fecha_corte,diferencia"); } catch { /* sin exactitud */ }
+  try { difs = await leer("v_diferencias", (q) => q, "jornada,fecha_corte,teorico,diferencia"); } catch { /* sin exactitud */ }
   el.querySelector("#g-msg").innerHTML = "";
   vista.desde = datos.desde; vista.hasta = datos.hasta;
   vista.maxDatos = datos.fecha_max_datos;
@@ -65,11 +65,11 @@ function exactitud(difs, hasta) {
   const porJ = {};
   for (const d of difs) {
     if (diaLocal(d.fecha_corte) > hasta) continue;
-    const j = (porJ[d.jornada] ||= { jornada: d.jornada, corte: d.fecha_corte, lineas: 0, ok: 0 });
-    j.lineas++; if (d.diferencia === 0) j.ok++;
+    const j = (porJ[d.jornada] ||= { jornada: d.jornada, corte: d.fecha_corte, lineas: 0, ok: 0, unidades: 0, teorico: 0 });
+    j.lineas++; if (d.diferencia === 0) j.ok++; j.unidades += Math.abs(d.diferencia); j.teorico += d.teorico || 0;
   }
   const u = Object.values(porJ).sort((a, b) => (a.corte < b.corte ? 1 : -1))[0];
-  return u ? { ...u, valor: u.ok / u.lineas } : null;
+  return u ? { ...u, valor: u.ok / u.lineas, valorUn: u.teorico > 0 ? Math.max(0, 1 - u.unidades / u.teorico) : null } : null;
 }
 
 function pintar(r, ex) {
@@ -89,11 +89,12 @@ function pintar(r, ex) {
   vista.el.querySelector("#g-cuerpo").innerHTML = `
     <section class="bloque">
       <div class="bloque-cab"><h2>Inventario del período</h2><p class="bloque-sub">${periodo}. ${supCosto ? `Valores con costos unitarios ${origen("supuesto", "Costos unitarios estimados: se editan en Costo y servicio › Parámetros y supuestos.")}.` : ""}</p></div>
-      <div class="figuras figuras-4">
+      <div class="figuras figuras-5">
         ${fig("Valor del inventario al cierre", usd0(tot.valorFin), `Stock al ${fLarga(S.dias[L - 1])} × costo unitario, sumando los ${filas.length} productos.`)}
         ${fig(`Rotación en ${L} días`, tot.rotacion === null ? "—" : dec(tot.rotacion, 2), `Veces que se vendió el inventario en el período: consumo valorizado ÷ inventario promedio valorizado = ${usd0(tot.consumo)} ÷ ${usd0(tot.valorProm)}.`)}
         ${fig("Días de inventario", tot.dias === null ? "—" : dec(tot.dias, 0), `Inventario promedio valorizado ÷ consumo valorizado por día = ${usd0(tot.valorProm)} ÷ (${usd0(tot.consumo)} ÷ ${L}).`)}
-        ${fig("Exactitud del último conteo", ex ? pct(ex.valor) : "sin conteo", ex ? `${ex.jornada}: ${ex.ok} de ${ex.lineas} registros sin diferencia.` : "No hay conteos hasta el final del período.")}
+        ${fig("Exactitud por registros", ex ? pct(ex.valor) : "sin conteo", ex ? `Último conteo, ${ex.jornada}: ${ex.ok} de ${ex.lineas} registros (posición + producto + lote) sin diferencia.` : "No hay conteos hasta el final del período.")}
+        ${fig("Exactitud en unidades", ex && ex.valorUn !== null ? pct(ex.valorUn) : "sin conteo", ex && ex.valorUn !== null ? `Último conteo, ${ex.jornada}: 1 − ${num(ex.unidades)} un. de diferencia (sin compensar faltantes con sobrantes) ÷ ${num(ex.teorico)} un. teóricas.` : "No hay conteos hasta el final del período.")}
       </div>
       ${tot.sinVentas ? `<p class="g-nota"><b>${tot.sinVentas} producto${tot.sinVentas > 1 ? "s" : ""} sin ventas en el período</b> (${filas.filter((x) => x.sinVentas).map((x) => esc(x.codigo)).join(", ")}): ${usd0(filas.filter((x) => x.sinVentas).reduce((a, x) => a + (x.valorFin || 0), 0))} inmovilizados. </p>` : ""}
       <details class="traza"><summary>Cómo se calcula cada número</summary><ul>${notas.map(([t, n]) => `<li><b>${t}</b>: ${esc(n)}</li>`).join("")}</ul></details>

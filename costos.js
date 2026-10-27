@@ -1,8 +1,8 @@
 // Costo y servicio: tablero para decidir si se puede bajar el costo del inventario sin perder nivel de servicio.
 // Los datos vienen del servidor (analisis_datos); los cálculos están en modelo.js con sus fórmulas a la vista.
-import { rpc, puede, leer } from "./api.js?v=202610272333";
-import { esc, num, aviso, ICON, tabla, pedir, toast, descargarCSV, usd, dec, pct, origen, fechaHora, TZ } from "./ui.js?v=202610272333";
-import { analizar, zDeNS, CATEGORIAS, MOTIVOS } from "./modelo.js?v=202610272333";
+import { rpc, puede, leer } from "./api.js?v=202610272358";
+import { esc, num, aviso, ICON, tabla, pedir, toast, descargarCSV, usd, dec, pct, origen, fechaHora, TZ } from "./ui.js?v=202610272358";
+import { analizar, zDeNS, CATEGORIAS, MOTIVOS } from "./modelo.js?v=202610272358";
 
 const fCorta = (iso) => { const [, m, d] = iso.split("-"); return `${d}/${m}`; };
 const fLarga = (iso) => iso.split("-").reverse().join("/");
@@ -115,7 +115,7 @@ async function cargar() {
   const d = s.datos;
   s.desde = d.desde; s.hasta = d.hasta;
   // Exactitud de inventario: registros de las jornadas de conteo (si no se pueden leer, el indicador queda sin dato)
-  try { s.difs = await leer("v_diferencias", (q) => q, "jornada,jornada_tipo,fecha_corte,diferencia"); } catch { s.difs = null; }
+  try { s.difs = await leer("v_diferencias", (q) => q, "jornada,jornada_tipo,fecha_corte,teorico,diferencia"); } catch { s.difs = null; }
   for (const id of ["p-desde", "p-hasta"]) { const inp = el.querySelector("#" + id); inp.min = d.fecha_min_datos; inp.max = hoyLocal(); }
   el.querySelector('#f-periodo [data-hasta="ultimo"]').textContent = `Hasta el último movimiento (${fCorta(d.fecha_max_datos)})`;
   el.querySelector("#p-desde").value = d.desde; el.querySelector("#p-hasta").value = d.hasta;
@@ -334,10 +334,10 @@ const fechaMeta = (v) => { const t = String(Math.round(v)); return `${t.slice(6,
 function exactitud(difs, hasta) {
   if (!difs) return null;
   const porJ = {};
-  for (const d of difs) if (diaLocal(d.fecha_corte) <= hasta) (porJ[d.jornada] ||= { jornada: d.jornada, corte: d.fecha_corte, lineas: 0, ok: 0, unidades: 0 });
-  for (const d of difs) { const j = porJ[d.jornada]; if (!j) continue; j.lineas++; if (d.diferencia === 0) j.ok++; j.unidades += Math.abs(d.diferencia); }
+  for (const d of difs) if (diaLocal(d.fecha_corte) <= hasta) (porJ[d.jornada] ||= { jornada: d.jornada, corte: d.fecha_corte, lineas: 0, ok: 0, unidades: 0, teorico: 0 });
+  for (const d of difs) { const j = porJ[d.jornada]; if (!j) continue; j.lineas++; if (d.diferencia === 0) j.ok++; j.unidades += Math.abs(d.diferencia); j.teorico += d.teorico || 0; }
   const ult = Object.values(porJ).sort((a, b) => (a.corte < b.corte ? 1 : -1))[0];
-  return ult ? { ...ult, valor: ult.ok / ult.lineas } : null;
+  return ult ? { ...ult, valor: ult.ok / ult.lineas, valorUn: ult.teorico > 0 ? Math.max(0, 1 - ult.unidades / ult.teorico) : null } : null;
 }
 
 function indicadores(res) {
@@ -376,6 +376,12 @@ function indicadores(res) {
       M: ex ? `Exactitud = registros sin diferencia ÷ registros contados en el último conteo hasta el ${fLarga(hasta)}: ${ex.jornada}, ${ex.ok} de ${ex.lineas} registros (${num(ex.unidades)} un. de diferencia en valor absoluto).` : "Registros sin diferencia ÷ registros contados en el último conteo del período. No hay conteos hasta esa fecha.",
       A: "Sin dato propio de la empresa. Se alcanza con conteos cíclicos frecuentes y ajustes aprobados; revisar la meta con el primer mes de conteos.",
       R: "La política de stock usa el stock del sistema: si no coincide con lo físico, el punto de pedido falla y aparecen faltantes." },
+    { id: "exactitud_un", t: "Exactitud en unidades", complementario: true, metaTxt: "sin meta propia: complementa la exactitud por registros",
+      hoy: ex && ex.valorUn !== null ? pct(ex.valorUn) : "sin conteo", prop: "no depende de la política", ok: null, soloHoy: true,
+      S: "Qué parte de las unidades del sistema coincide con lo contado. Mide el tamaño de las diferencias; la exactitud por registros mide en cuántos lugares hay diferencias.",
+      M: ex && ex.valorUn !== null ? `Exactitud en unidades = 1 − unidades de diferencia (sin compensar faltantes con sobrantes) ÷ unidades teóricas = 1 − ${num(ex.unidades)} ÷ ${num(ex.teorico)}, en ${ex.jornada}.` : "1 − unidades de diferencia ÷ unidades teóricas del último conteo del período. No hay conteos hasta esa fecha.",
+      A: "No tiene meta propia: se lee junto con la exactitud por registros. Si esta es alta y aquella baja, hay muchas diferencias chicas; si las dos son bajas, faltan o sobran cantidades importantes.",
+      R: "Una diferencia de 1 unidad y una de 50 cuentan igual en la exactitud por registros; esta muestra cuánta mercadería está mal registrada." },
   ] };
 }
 
@@ -385,23 +391,24 @@ function pintarMetas(res) {
   const pz = plazo.valor === null ? null : String(Math.round(plazo.valor));
   const quedan = pz ? Math.round((Date.parse(`${pz.slice(0, 4)}-${pz.slice(4, 6)}-${pz.slice(6, 8)}`) - Date.parse(hoy)) / 86400000) : null;
   const plazoTxt = pz ? `${fechaMeta(plazo.valor)}${quedan >= 0 ? ` (quedan ${quedan} días)` : " (vencida)"}` : "sin fecha";
-  const estado = (x) => (x.ok === null ? `<span class="est est-nd">Sin dato o sin meta</span>`
+  const estado = (x) => (x.complementario ? `<span class="est est-nd">Complementario</span>` : x.ok === null ? `<span class="est est-nd">Sin dato o sin meta</span>`
     : x.ok ? `<span class="est est-ok"><b aria-hidden="true">✓</b> ${x.soloHoy ? "Hoy cumple" : "La propuesta cumple"}</span>`
     : `<span class="est est-no"><b aria-hidden="true">✕</b> ${x.soloHoy ? "Hoy no cumple" : "La propuesta no cumple"}</span>`);
-  const evaluables = lista.filter((x) => x.ok !== null), ok = evaluables.filter((x) => x.ok).length;
+  const conMeta = lista.filter((x) => !x.complementario);
+  const evaluables = conMeta.filter((x) => x.ok !== null), ok = evaluables.filter((x) => x.ok).length;
   const linea = estadoVista.el.querySelector("#resp-metas");
-  if (linea) linea.innerHTML = evaluables.length ? `<b>Metas al ${plazoTxt.replace(/ \(.*/, "")}:</b> ${ok} de ${lista.length} se cumplen${evaluables.length < lista.length ? ` (${lista.length - evaluables.length} sin dato o sin meta)` : ""}. <a href="#b-metas">Ver indicadores</a>` : "";
+  if (linea) linea.innerHTML = evaluables.length ? `<b>Metas al ${plazoTxt.replace(/ \(.*/, "")}:</b> ${ok} de ${conMeta.length} se cumplen${evaluables.length < conMeta.length ? ` (${conMeta.length - evaluables.length} sin dato o sin meta)` : ""}. <a href="#b-metas">Ver indicadores</a>` : "";
   estadoVista.el.querySelector("#b-metas").innerHTML = `<div class="bloque-cab"><h2>Objetivos e indicadores</h2>
       <p class="bloque-sub">Fecha límite: ${plazoTxt} ${origen(plazo.origen, plazo.razon)}. Responsable: supervisor de depósito.</p></div>
     <div class="metas">${lista.map((x) => `<article class="meta">
       <div class="meta-cab"><h3>${x.t}</h3>${estado(x)}</div>
-      <p class="meta-obj">Meta: <b>${x.metaTxt}</b> ${origen(x.meta.origen, x.meta.razon)}</p>
+      <p class="meta-obj">${x.complementario ? x.metaTxt[0].toUpperCase() + x.metaTxt.slice(1) : `Meta: <b>${x.metaTxt}</b> ${origen(x.meta.origen, x.meta.razon)}`}</p>
       <dl class="meta-val"><div><dt>Hoy</dt><dd>${x.hoy}</dd></div><div><dt>Propuesta</dt><dd>${x.prop}</dd></div></dl>
       <details class="traza"><summary>Cómo se mide</summary><dl class="smart">
         <dt>Qué mide</dt><dd>${esc(x.S)}</dd><dt>Cálculo</dt><dd>${esc(x.M)}</dd><dt>Por qué es alcanzable</dt><dd>${esc(x.A)}</dd>
         <dt>Por qué importa</dt><dd>${esc(x.R)}</dd></dl></details>
     </article>`).join("")}</div>
-    ${lista.some((x) => x.meta.origen === "faltante") || plazo.origen === "faltante" ? `<p class="g-nota">Hay metas sin cargar: el administrador las carga en «Parámetros y supuestos».</p>` : ""}`;
+    ${conMeta.some((x) => x.meta.origen === "faltante") || plazo.origen === "faltante" ? `<p class="g-nota">Hay metas sin cargar: el administrador las carga en «Parámetros y supuestos».</p>` : ""}`;
   estadoVista.el.querySelector("#resp-metas a")?.addEventListener("click", (e) => { e.preventDefault(); estadoVista.el.querySelector("#b-metas").scrollIntoView({ block: "start" }); });
 }
 
