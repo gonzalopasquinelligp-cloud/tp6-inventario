@@ -1,8 +1,9 @@
 // Tablero de gestión: valorización, rotación y clasificación ABC / XYZ del inventario.
 // Usa los mismos datos que «Costo y servicio» (analisis_datos); los cálculos están en modelo.js.
-import { rpc, leer } from "./api.js?v=202610272323";
-import { esc, num, aviso, ICON, tabla, descargarCSV, usd, dec, pct, origen, TZ } from "./ui.js?v=202610272323";
-import { clasificar } from "./modelo.js?v=202610272323";
+import { rpc, leer } from "./api.js?v=202610272333";
+import { esc, num, aviso, ICON, tabla, descargarCSV, usd, dec, pct, origen, TZ } from "./ui.js?v=202610272333";
+import { clasificar } from "./modelo.js?v=202610272333";
+import { avisoSinDatos } from "./costos.js?v=202610272333";
 
 const fLarga = (iso) => iso.split("-").reverse().join("/");
 const usd0 = (v) => (v === null || v === undefined ? "—" : `USD ${Math.round(v).toLocaleString("es-AR")}`);
@@ -27,6 +28,7 @@ export async function render(el, { params }) {
       <form id="g-periodo" class="cs-grupo" aria-label="Período">
         <div class="cs-campo"><label for="g-desde">Desde</label><input id="g-desde" type="date" required></div>
         <div class="cs-campo"><label for="g-hasta">Hasta</label><input id="g-hasta" type="date" required></div>
+        <div class="cs-rapido"><button class="btn chico" type="button" data-hasta="ultimo">Hasta el último movimiento</button><button class="btn chico" type="button" data-hasta="hoy">Hasta hoy</button></div>
         <button class="btn" type="submit">Ver período</button>
       </form>
       <a class="btn" href="#/costos">${ICON.costo} Costo y servicio</a>
@@ -35,6 +37,10 @@ export async function render(el, { params }) {
   el.querySelector("#g-periodo").addEventListener("submit", (e) => {
     e.preventDefault(); vista.desde = el.querySelector("#g-desde").value; vista.hasta = el.querySelector("#g-hasta").value; cargar();
   });
+  el.querySelectorAll("#g-periodo [data-hasta]").forEach((b) => b.addEventListener("click", () => {
+    el.querySelector("#g-hasta").value = b.dataset.hasta === "hoy" ? diaLocal(Date.now()) : vista.maxDatos || diaLocal(Date.now());
+    el.querySelector("#g-periodo").requestSubmit();
+  }));
   await cargar();
 }
 
@@ -46,7 +52,10 @@ async function cargar() {
   try { difs = await leer("v_diferencias", (q) => q, "jornada,fecha_corte,diferencia"); } catch { /* sin exactitud */ }
   el.querySelector("#g-msg").innerHTML = "";
   vista.desde = datos.desde; vista.hasta = datos.hasta;
-  for (const id of ["g-desde", "g-hasta"]) { const i = el.querySelector("#" + id); i.min = datos.fecha_min_datos; i.max = datos.fecha_max_datos; }
+  vista.maxDatos = datos.fecha_max_datos;
+  for (const id of ["g-desde", "g-hasta"]) { const i = el.querySelector("#" + id); i.min = datos.fecha_min_datos; i.max = diaLocal(Date.now()); }
+  el.querySelector('#g-periodo [data-hasta="ultimo"]').textContent = `Hasta el último movimiento (${fLarga(datos.fecha_max_datos).slice(0, 5)})`;
+  if (avisoSinDatos(datos)) el.querySelector("#g-msg").innerHTML = aviso("alerta", avisoSinDatos(datos));
   el.querySelector("#g-desde").value = datos.desde; el.querySelector("#g-hasta").value = datos.hasta;
   pintar(clasificar(datos), exactitud(difs, datos.hasta));
 }

@@ -1,11 +1,17 @@
 // Costo y servicio: tablero para decidir si se puede bajar el costo del inventario sin perder nivel de servicio.
 // Los datos vienen del servidor (analisis_datos); los cálculos están en modelo.js con sus fórmulas a la vista.
-import { rpc, puede, leer } from "./api.js?v=202610272323";
-import { esc, num, aviso, ICON, tabla, pedir, toast, descargarCSV, usd, dec, pct, origen, fechaHora, TZ } from "./ui.js?v=202610272323";
-import { analizar, zDeNS, CATEGORIAS, MOTIVOS } from "./modelo.js?v=202610272323";
+import { rpc, puede, leer } from "./api.js?v=202610272333";
+import { esc, num, aviso, ICON, tabla, pedir, toast, descargarCSV, usd, dec, pct, origen, fechaHora, TZ } from "./ui.js?v=202610272333";
+import { analizar, zDeNS, CATEGORIAS, MOTIVOS } from "./modelo.js?v=202610272333";
 
 const fCorta = (iso) => { const [, m, d] = iso.split("-"); return `${d}/${m}`; };
 const fLarga = (iso) => iso.split("-").reverse().join("/");
+const hoyLocal = () => new Date().toLocaleDateString("sv-SE", { timeZone: TZ });
+// Aviso cuando el período pasa el último día con movimientos: esos días cuentan como días sin ventas.
+export const avisoSinDatos = (d) => (d.hasta > d.fecha_max_datos
+  ? `Del ${fLarga(sumarDia(d.fecha_max_datos))} al ${fLarga(d.hasta)} no hay movimientos registrados: se toman como días sin ventas ni compras. Si hubo movimientos, cargalos para que el análisis sea correcto.`
+  : "");
+function sumarDia(iso) { const f = new Date(`${iso}T12:00:00Z`); f.setUTCDate(f.getUTCDate() + 1); return f.toISOString().slice(0, 10); }
 const usd0 = (v) => (v === null || v === undefined ? "—" : `USD\u00a0${Math.round(v).toLocaleString("es-AR")}`);
 // Texto del nivel de servicio en uso: un valor o los tres niveles por clase ABC.
 const nsTxt = (res) => (res.porClase.activo
@@ -29,6 +35,7 @@ export async function render(el, { params }) {
           <span class="cs-grupo-t">Período</span>
           <div class="cs-campo"><label for="p-desde">Desde</label><input id="p-desde" type="date" required></div>
           <div class="cs-campo"><label for="p-hasta">Hasta</label><input id="p-hasta" type="date" required></div>
+          <div class="cs-rapido"><button class="btn chico" type="button" data-hasta="ultimo">Hasta el último movimiento</button><button class="btn chico" type="button" data-hasta="hoy">Hasta hoy</button></div>
           <div class="cs-campo"><label for="p-gran">Ver por</label><select id="p-gran"><option value="dia">Día</option><option value="semana">Semana</option></select></div>
           <button class="btn" type="submit">Ver período</button>
         </form>
@@ -57,6 +64,10 @@ export async function render(el, { params }) {
     estadoVista.gran = el.querySelector("#p-gran").value;
     cargar();
   });
+  el.querySelectorAll("#f-periodo [data-hasta]").forEach((b) => b.addEventListener("click", () => {
+    el.querySelector("#p-hasta").value = b.dataset.hasta === "hoy" ? hoyLocal() : estadoVista.datos?.fecha_max_datos || hoyLocal();
+    el.querySelector("#f-periodo").requestSubmit();
+  }));
   el.querySelector("#p-gran").addEventListener("change", (e) => { estadoVista.gran = e.target.value; if (estadoVista.datos) pintar(); });
   el.querySelector("#cs-abrir").addEventListener("click", (e) => {
     const abierto = e.currentTarget.getAttribute("aria-expanded") === "true";
@@ -105,7 +116,8 @@ async function cargar() {
   s.desde = d.desde; s.hasta = d.hasta;
   // Exactitud de inventario: registros de las jornadas de conteo (si no se pueden leer, el indicador queda sin dato)
   try { s.difs = await leer("v_diferencias", (q) => q, "jornada,jornada_tipo,fecha_corte,diferencia"); } catch { s.difs = null; }
-  for (const id of ["p-desde", "p-hasta"]) { const inp = el.querySelector("#" + id); inp.min = d.fecha_min_datos; inp.max = d.fecha_max_datos; }
+  for (const id of ["p-desde", "p-hasta"]) { const inp = el.querySelector("#" + id); inp.min = d.fecha_min_datos; inp.max = hoyLocal(); }
+  el.querySelector('#f-periodo [data-hasta="ultimo"]').textContent = `Hasta el último movimiento (${fCorta(d.fecha_max_datos)})`;
   el.querySelector("#p-desde").value = d.desde; el.querySelector("#p-hasta").value = d.hasta;
   el.querySelector("#p-gran").value = s.gran;
   if (s.ns === null) s.ns = Number(d.parametros.find((p) => p.clave === "nivel_servicio")?.valor ?? 95);
@@ -208,6 +220,7 @@ function pintarRespuesta(res) {
       <button class="btn prim" type="button" data-ir="b-politica">Ver la política propuesta</button>
       <button class="btn" type="button" data-ir="b-param">Revisar costos y supuestos<span class="resp-ir-n">${cuenta.supuesto} supuestos, ${cuenta.faltante} faltantes</span></button>
     </div>
+    ${avisoSinDatos(estadoVista.datos) ? aviso("alerta", avisoSinDatos(estadoVista.datos)) : ""}
     ${prueba ? `<p class="resp-escenario"><span class="org org-sim">Prueba</span> Escenario de prueba: ventas ${signoVar(res.variacion)}, nivel de servicio ${nsTxt(res)}. No se guarda.</p>` : ""}
     <div class="figuras" id="kpis" aria-label="Servicio: propuesta contra hoy">
       ${figura("prop", "Entregas que se cumplen (OTIF)", pct(t.otifPropuesta), pct(t.otifActual), delta(t.otifActual, t.otifPropuesta, false, (x) => `${dec(x * 100, 1)} puntos`, false),
