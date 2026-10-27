@@ -1,8 +1,8 @@
 // Costo y servicio: tablero para decidir si se puede bajar el costo del inventario sin perder nivel de servicio.
 // Los datos vienen del servidor (analisis_datos); los cálculos están en modelo.js con sus fórmulas a la vista.
-import { rpc, puede, leer } from "./api.js?v=202610242329";
-import { esc, num, aviso, ICON, tabla, pedir, toast, descargarCSV, usd, dec, pct, origen, fechaHora, TZ } from "./ui.js?v=202610242329";
-import { analizar, zDeNS, CATEGORIAS, MOTIVOS } from "./modelo.js?v=202610242329";
+import { rpc, puede, leer } from "./api.js?v=202610272255";
+import { esc, num, aviso, ICON, tabla, pedir, toast, descargarCSV, usd, dec, pct, origen, fechaHora, TZ } from "./ui.js?v=202610272255";
+import { analizar, zDeNS, CATEGORIAS, MOTIVOS } from "./modelo.js?v=202610272255";
 
 const fCorta = (iso) => { const [, m, d] = iso.split("-"); return `${d}/${m}`; };
 const fLarga = (iso) => iso.split("-").reverse().join("/");
@@ -33,7 +33,7 @@ export async function render(el, { params }) {
           <button class="btn" type="submit">Ver período</button>
         </form>
         <form class="cs-grupo simulador" id="simulador" aria-label="Probar un escenario">
-          <span class="cs-grupo-t">Escenario de prueba<small>No cambia los datos guardados</small></span>
+          <span class="cs-grupo-t">Probar otro escenario<small>Mové las ventas y el nivel de servicio. No se guarda nada.</small></span>
           <div class="cs-campo sim-campo"><label for="s-var">Variación de ventas</label>
             <div class="sim-fila"><input id="s-var-r" type="range" min="-50" max="100" step="5" aria-label="Variación de ventas, deslizador">
             <span class="sim-num"><input id="s-var" type="number" min="-90" max="300" step="1" inputmode="numeric"> %</span></div></div>
@@ -118,19 +118,16 @@ async function cargar() {
 function armarCuerpo() {
   estadoVista.el.querySelector("#cuerpo").innerHTML = `
     <section class="respuesta" id="respuesta" aria-live="polite"></section>
-    <section class="bloque" id="b-metas"></section>
+    <section class="bloque" id="b-politica"></section>
+    <section class="bloque" id="b-categorias"></section>
     <section class="bloque" id="b-grafico"></section>
     <section class="bloque" id="b-servicio"></section>
-    <div class="dos-col">
-      <section class="bloque" id="b-acciones"></section>
-      <section class="bloque" id="b-categorias"></section>
-    </div>
-    <details class="seccion"><summary>Cálculo por producto: stock de seguridad, punto de pedido y lote</summary><div id="b-politica"></div></details>
+    <section class="bloque" id="b-metas"></section>
     <details class="seccion"><summary>Costo por producto</summary><div id="b-costos"></div></details>
     <details class="seccion"><summary>Qué pasa si las ventas aumentan</summary><div id="b-sensib"></div></details>
     <details class="seccion"><summary>Devoluciones del período</summary><div id="b-devol"></div></details>
-    <details class="seccion"><summary>Parámetros y supuestos (costos, plazos, lotes)</summary><div id="b-param"></div></details>
-    <details class="seccion" id="sec-limites"><summary>Límites del resultado y cómo se calcula</summary><div id="b-limites"></div></details>`;
+    <details class="seccion" id="sec-limites"><summary>Límites del resultado y cómo se calcula</summary><div id="b-limites"></div></details>
+    <section class="bloque" id="b-param"></section>`;
 }
 
 function pintar() {
@@ -155,7 +152,6 @@ function pintar() {
   pintarGrafico(res);
   pintarServicio(res);
   pintarCategorias(res);
-  pintarAcciones(res);
   pintarPolitica(res);
   pintarCostos(res);
   pintarSensibilidad(res);
@@ -197,14 +193,18 @@ function pintarRespuesta(res) {
       <div class="fig-v">${valor}</div>
       <div class="fig-c">Hoy ${hoy} ${dlt}</div>
       </div>`; };
-  // Las tres conclusiones que más ayudan a decidir: qué explica la diferencia, qué pasa con el stock
-  // y si depende del supuesto de costo por orden. El resto queda en «Límites del resultado».
-  const d = c.detalle, porque = [d[0], d[1], d[2]].filter(Boolean);
+  const porque = motivos(res);
+  const cuenta = conteoOrigen(res);
   estadoVista.el.querySelector("#respuesta").innerHTML = `
     <p class="resp-pregunta">Recomendación · ${periodo}</p>
     <div class="ver-frase tono-${c.tono}">
       <span class="resp-titulo">${titulo}</span>
       <span class="resp-texto">${frase}</span>
+    </div>
+    <p class="resp-cambia"><b>${c.tono === "si" ? "Qué cambia" : "Qué cambiaría"}:</b> ${accionCompra(res)}</p>
+    <div class="resp-ir">
+      <button class="btn prim" type="button" data-ir="b-politica">Ver la política propuesta</button>
+      <button class="btn" type="button" data-ir="b-param">Revisar costos y supuestos<span class="resp-ir-n">${cuenta.supuesto} supuestos, ${cuenta.faltante} faltantes</span></button>
     </div>
     ${prueba ? `<p class="resp-escenario"><span class="org org-sim">Prueba</span> Escenario de prueba: ventas ${signoVar(res.variacion)}, nivel de servicio ${nsTxt(res)}. No se guarda.</p>` : ""}
     <div class="figuras figuras-4" id="kpis" aria-label="Propuesta contra hoy">
@@ -220,13 +220,60 @@ function pintarRespuesta(res) {
     <details class="traza"><summary>Cómo se calcula cada número</summary><ul>${formulas.map(([t, f]) => `<li><b>${t}</b>: ${esc(f)}</li>`).join("")}</ul></details>
     <p class="resp-metas" id="resp-metas"></p>
     <div class="resp-pie">
-      <div><h3>Por qué</h3><ul class="resp-porque">${porque.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>
+      <div><h3>Por qué</h3><ul class="resp-porque">${porque.map((x) => `<li>${x}</li>`).join("")}</ul></div>
       <p class="resp-aviso"><a href="#/gestion/${res.series.dias[0]}/${res.series.dias[res.series.L - 1]}">Ver valorización, rotación y clasificación ABC / XYZ en el tablero de gestión</a></p>
       ${baja ? `<p class="resp-aviso"><span class="conf conf-baja">Baja confianza</span> ${baja} de ${conVentas} productos vendieron pocos días: tomá el resultado como orientativo. <a href="#sec-limites" id="ir-limites">Ver límites del resultado</a></p>` : ""}
     </div>`;
+  estadoVista.el.querySelectorAll("#respuesta [data-ir]").forEach((btn) => btn.addEventListener("click", () =>
+    estadoVista.el.querySelector("#" + btn.dataset.ir).scrollIntoView({ block: "start" })));
   estadoVista.el.querySelector("#ir-limites")?.addEventListener("click", (e) => {
     e.preventDefault(); const sec = estadoVista.el.querySelector("#sec-limites"); sec.open = true; sec.scrollIntoView({ block: "start" });
   });
+}
+
+const cantOrd = (n) => (n < 10 ? dec(n, 1).replace(/,0$/, "") : num(Math.round(n)));
+const lista = (xs) => (xs.length > 1 ? `${xs.slice(0, -1).join(", ")} y ${xs[xs.length - 1]}` : xs.join(""));
+const montoSigno = (v) => `${v > 0 ? "+" : "−"}${usd(Math.abs(v))}`;
+
+// La acción concreta de la propuesta: cuándo y cuánto comprar, cuántas órdenes y qué pasa con el stock.
+function accionCompra(res) {
+  const t = res.tot, L = res.series.L;
+  const sinVentas = res.filas.filter((x) => x.pol.calculable && x.pol.sinDemanda).map((x) => x.prod.codigo);
+  const vA = t.valorPromActual, vP = t.valorPromPropuesta;
+  const stock = vP < vA - 0.005 ? `menos stock promedio (${usd0(vP)} contra ${usd0(vA)})`
+    : vP > vA + 0.005 ? `más stock promedio (${usd0(vP)} contra ${usd0(vA)})` : "el mismo stock promedio";
+  const entregas = t.otifPropuesta !== null && t.otifActual !== null && t.otifPropuesta >= t.otifActual - 1e-9 ? " y sin perder entregas" : "";
+  return `comprar cada producto cuando su stock baja al punto de pedido, siempre en el mismo lote${sinVentas.length ? `, y no reponer ${lista(sinVentas)} hasta que vuelvan a venderse` : ""}. `
+    + `Son ${cantOrd(t.ordenesPropuesta)} órdenes en ${L} días en lugar de ${cantOrd(t.ordenesActual)}, con ${stock}${entregas}.`;
+}
+
+// Por qué: de dónde sale la diferencia de costo, en términos de lo que se hace distinto.
+function motivos(res) {
+  const t = res.tot, out = [];
+  const dO = t.propuesta.orden - t.actual.orden;
+  const dS = ["capital", "almacenamiento", "obsolescencia"].reduce((a, k) => a + (t.propuesta[k] - t.actual[k]), 0);
+  const nA = cantOrd(t.ordenesActual), nP = cantOrd(t.ordenesPropuesta);
+  if (Math.abs(dO) >= 0.01) out.push(dO < 0
+    ? `<b>Se pide menos veces:</b> ${nP} órdenes en lugar de ${nA}, ${montoSigno(dO)} en costo de pedir.`
+    : `<b>Se pide más veces:</b> ${nP} órdenes en lugar de ${nA}, ${montoSigno(dO)} en costo de pedir.`);
+  if (Math.abs(dS) >= 0.01) out.push(dS < 0
+    ? `<b>Hay menos plata parada:</b> la mercadería en depósito vale en promedio ${usd0(t.valorPromPropuesta)} en lugar de ${usd0(t.valorPromActual)}; tenerla cuesta ${usd(Math.abs(dS))} menos en capital y almacenamiento.`
+    : `<b>Hay más mercadería en depósito:</b> vale en promedio ${usd0(t.valorPromPropuesta)} en lugar de ${usd0(t.valorPromActual)}; tenerla cuesta ${usd(dS)} más en capital y almacenamiento${dO < 0 && -dO > dS ? `, mucho menos que lo que se ahorra en órdenes` : ""}.`);
+  const eq = res.equilibrioOrden;
+  if (eq && eq.valor === null) out.push(`<b>La conclusión no depende del costo por orden:</b> la propuesta cuesta ${eq.propuestaSiempreMasBarata ? "menos" : "más"} que hoy con cualquier valor entre ${usd0(eq.desde)} y ${usd0(eq.hasta)}.`);
+  else if (eq) out.push(`<b>La conclusión depende del costo por orden:</b> con ${usd(eq.valor)} por orden las dos cuestan lo mismo; ${eq.propuestaMasCaraDebajo ? "por debajo" : "por encima"} la propuesta cuesta más. Hoy se usan ${usd(res.P.v("costo_orden") ?? 0)}.`);
+  const conFalta = res.filas.filter((x) => x.simP.unidadesFaltantes > 0);
+  if (conFalta.length) out.push(`<b>Faltaría mercadería en</b> ${conFalta.map((x) => `${esc(x.prod.codigo)} (${num(x.simP.unidadesFaltantes)} un.)`).join(", ")}.`);
+  return out;
+}
+
+// Cantidad de parámetros por origen (globales y por producto).
+function conteoOrigen(res) {
+  const P = res.P, n = { supuesto: 0, faltante: 0, usuario: 0, real: 0 };
+  for (const x of Object.values(P.g)) n[x.origen] = (n[x.origen] || 0) + 1;
+  const defsProd = Object.values(P.defs).filter((d) => d.ambito === "producto");
+  for (const p of res.series.productos) for (const d of defsProd) { const o = P.leer(d.clave, p.codigo).origen; n[o] = (n[o] || 0) + 1; }
+  return n;
 }
 
 // ---------------------------------------------------------------------
@@ -495,39 +542,22 @@ function pintarCategorias(res) {
   const max = Math.max(...cats.map((k) => Math.max(t.actual[k.id], t.propuesta[k.id])), 1);
   const barra = (v, cl) => `<div class="cb-fila"><div class="cb-pista"><div class="cb-barra ${cl}" style="width:${(v / max) * 100}%"></div></div><span class="cb-val">${usd0(v)}</span></div>`;
   estadoVista.el.querySelector("#b-categorias").innerHTML = `<div class="bloque-cab"><h2>En qué se va el costo</h2>
-</div>
+      <p class="bloque-sub">Hoy contra la propuesta, en los ${res.series.L} días del período.</p></div>
     <div class="leyenda-g"><span><i class="sw sw-hoy"></i>Hoy</span><span><i class="sw sw-prop"></i>Propuesta</span></div>
     <div class="cb">${cats.map((k) => `<div class="cb-item"><div class="cb-nombre">${esc(k.t)}</div>${barra(t.actual[k.id], "hoy")}${barra(t.propuesta[k.id], "prop")}</div>`).join("")}</div>
     <p class="small muted">Sin costo en el período: manipulación, obsolescencia y quiebre (falta el dato).</p>`;
 }
 
 // ---------------------------------------------------------------------
-// Qué hacer con cada producto
+// Acción sugerida para cada producto según su stock al cierre
 // ---------------------------------------------------------------------
 function accion(x) {
   const p = x.pol;
   if (!p.calculable) return { cl: "a-falta", t: "Falta dato", d: `Falta: ${p.faltan.join(", ")}.` };
   if (p.sinDemanda) return { cl: "a-nd", t: "Sin ventas: no reponer", d: `No se vendió en el período. Hay ${num(x.stockFin)} un. inmovilizadas.` };
   if (x.stockFin <= p.ROP) return { cl: "a-pedir", t: `Pedir ${num(p.Q)} un.`, d: `Stock ${num(x.stockFin)} ≤ punto de pedido ${num(p.ROP)}.` };
-  if (x.stockFin > p.objetivo) return { cl: "a-exceso", t: `Sobran ${num(x.stockFin - p.objetivo)} un.`, d: `Stock ${num(x.stockFin)} > objetivo ${num(p.objetivo)}: no comprar hasta bajar al punto de pedido.` };
-  return { cl: "a-ok", t: "En rango", d: `Stock entre el punto de pedido (${num(p.ROP)}) y el objetivo (${num(p.objetivo)}).` };
-}
-
-function pintarAcciones(res) {
-  const conVentas = res.filas.filter((x) => !x.pol.sinDemanda);
-  const todasBaja = conVentas.length > 0 && conVentas.every((x) => x.pol.bajaConfianza);
-  const orden = { "a-pedir": 0, "a-falta": 1, "a-exceso": 2, "a-ok": 3, "a-nd": 4 };
-  const filas = res.filas.map((x) => ({ ...x, acc: accion(x) })).sort((p, q) => orden[p.acc.cl] - orden[q.acc.cl]);
-  const n = (cl) => filas.filter((x) => x.acc.cl === cl).length;
-  estadoVista.el.querySelector("#b-acciones").innerHTML = `<div class="bloque-cab"><h2>Qué hacer con cada producto</h2>
-      <p class="bloque-sub">Stock al ${fLarga(res.series.dias[res.series.L - 1])} contra la política propuesta: ${n("a-pedir")} para pedir, ${n("a-exceso")} con sobrante, ${n("a-ok")} en rango${n("a-nd") ? `, ${n("a-nd")} sin ventas` : ""}.${todasBaja ? " Todos vendieron pocos días: las cantidades son orientativas." : ""}</p></div>
-    ${tabla([
-      { t: "Producto", html: (x) => `<b>${esc(x.prod.codigo)}</b><div class="nota">${esc(x.prod.descripcion)}</div>` },
-      { t: "Acción", html: (x) => `<span class="accion-chip ${x.acc.cl}">${esc(x.acc.t)}</span><div class="nota">${esc(x.acc.d)}</div>${!todasBaja && x.pol.bajaConfianza && !x.pol.sinDemanda ? `<div class="nota">Pocas ventas: orientativo.</div>` : ""}` },
-      { t: "Stock", num: true, html: (x) => num(x.stockFin) },
-      { t: "Pedir cuando baje a", num: true, html: (x) => (x.pol.calculable && !x.pol.sinDemanda ? num(x.pol.ROP) : "—") },
-      { t: "Máximo", num: true, html: (x) => (x.pol.calculable && !x.pol.sinDemanda ? num(x.pol.objetivo) : "—") },
-    ], filas)}`;
+  if (x.stockFin > p.objetivo) return { cl: "a-exceso", t: `Sobran ${num(x.stockFin - p.objetivo)} un.`, d: `Stock ${num(x.stockFin)} > máximo ${num(p.objetivo)}: no comprar hasta bajar al punto de pedido.` };
+  return { cl: "a-ok", t: "En rango", d: `Stock entre el punto de pedido (${num(p.ROP)}) y el máximo (${num(p.objetivo)}).` };
 }
 
 // ---------------------------------------------------------------------
@@ -568,10 +598,29 @@ function pintarPolitica(res) {
     return `${eoq}; D = d × 365; H = costo unitario × (capital + almacenamiento + obsolescencia) = ${dec(p.c, 2)} × ${dec(p.tasas, 2)} %. Q = máx(EOQ, lote mínimo ${p.lote ?? "—"}) = ${p.Q}`;
   };
   const filas = res.filas;
+  const conVentas = filas.filter((x) => !x.pol.sinDemanda);
+  const todasBaja = conVentas.length > 0 && conVentas.every((x) => x.pol.bajaConfianza);
+  const orden = { "a-pedir": 0, "a-falta": 1, "a-exceso": 2, "a-ok": 3, "a-nd": 4 };
+  const conAcc = filas.map((x) => ({ ...x, acc: accion(x) })).sort((p, q) => orden[p.acc.cl] - orden[q.acc.cl]);
+  const n = (cl) => conAcc.filter((x) => x.acc.cl === cl).length;
+  const regla = (x) => { const p = x.pol;
+    if (!p.calculable) return `<span class="falta-valor">Falta: ${esc(p.faltan.join(", "))}</span>`;
+    if (p.sinDemanda) return "No reponer hasta que se venda";
+    return `<span title="${esc(tROP(p))} · ${esc(tQ(p))}">Pedir <b>${num(p.Q)} un.</b> cuando queden <b>${num(p.ROP)}</b></span>`; };
   const b = estadoVista.el.querySelector("#b-politica");
-  b.innerHTML = `<div class="bloque-cab"><h2>Política de stock por producto</h2>
-      <p class="bloque-sub">Nivel de servicio ${nsTxt(res)}${res.porClase.activo ? "" : ` (z = ${dec(zDeNS(res.ns / 100), 3)})`}${res.variacion ? ` · ventas ${res.variacion > 0 ? "+" : ""}${res.variacion} %` : ""}. SS = stock de seguridad, ROP = punto de reorden, Q = lote a pedir. Pasá el cursor sobre un valor para ver la cuenta.</p>
+  b.innerHTML = `<div class="bloque-cab"><h2>Política propuesta: cuándo y cuánto comprar</h2>
+      <p class="bloque-sub">Nivel de servicio ${nsTxt(res)}${res.variacion ? ` · ventas ${signoVar(res.variacion)}` : ""}. Stock al ${fLarga(res.series.dias[res.series.L - 1])}: ${n("a-pedir")} para pedir, ${n("a-exceso")} con sobrante, ${n("a-ok")} en rango${n("a-nd") ? `, ${n("a-nd")} sin ventas` : ""}.${todasBaja ? " Todos vendieron pocos días: las cantidades son orientativas." : ""}</p>
       <div class="btns"><button class="btn chico" id="csv-pol">${ICON.csv} Exportar CSV</button></div></div>
+    ${tabla([
+      { t: "Producto", html: (x) => `<b>${esc(x.prod.codigo)}</b><div class="nota">${esc(x.prod.descripcion)}</div>` },
+      { t: "Regla de compra", html: regla },
+      { t: "Ahora", html: (x) => `<span class="accion-chip ${x.acc.cl}">${esc(x.acc.t)}</span><div class="nota">${esc(x.acc.d)}</div>${!todasBaja && x.pol.bajaConfianza && !x.pol.sinDemanda ? `<div class="nota">Pocas ventas: orientativo.</div>` : ""}` },
+      { t: "Stock de seguridad", num: true, html: (x) => (x.pol.calculable && !x.pol.sinDemanda ? `<span title="${esc(tSS(x))}">${num(x.pol.SS)}</span>` : "—") },
+      { t: "Máximo", num: true, html: (x) => (x.pol.calculable && !x.pol.sinDemanda ? `<span title="Stock de seguridad + lote = ${x.pol.SS} + ${x.pol.Q}">${num(x.pol.objetivo)}</span>` : "—") },
+      { t: "Stock al cierre", num: true, html: (x) => num(x.stockFin) },
+    ], conAcc)}
+    <details class="traza"><summary>Detalle del cálculo por producto (demanda, desvío, z, lote económico)</summary>
+      <p class="small muted">SS = stock de seguridad, ROP = punto de pedido, Q = lote a pedir. Pasá el cursor sobre un valor para ver la cuenta.</p>
     ${tabla([
       { t: "Producto", html: (x) => `<div class="col-prod"><b>${esc(x.prod.codigo)}</b><div class="nota">${esc(x.prod.descripcion)}</div></div>` },
       { t: "Retiros", num: true, html: (x) => `<span title="Suma de los retiros por venta del período${res.variacion ? ` × ${dec(res.f, 2)}` : ""}.">${dec(x.pol.demandaTotal, 1)}</span>` },
@@ -592,7 +641,7 @@ function pintarPolitica(res) {
       { t: "Stock al cierre", num: true, html: (x) => `<span title="Stock registrado al ${fLarga(res.series.dias[res.series.L - 1])}${res.variacion ? " con la variación de ventas aplicada" : ""}">${num(x.stockFin)}</span>` },
       { t: "Cobertura, días", num: true, html: (x) => x.cobertura === null ? `<span title="Sin ventas: cobertura indefinida">—</span>` : `<span title="Cobertura = stock al cierre ÷ d = ${num(x.stockFin)} ÷ ${dec(x.pol.dbar, 2)}">${dec(x.cobertura, 1)}</span>` },
       { t: "Riesgo de quiebre", html: (x) => `<span class="riesgo r-${x.riesgo.nivel}" title="${esc(x.riesgo.detalle)}">${esc(x.riesgo.t)}</span>${x.reponer ? `<div class="nota">Stock al cierre ≤ punto de reorden: corresponde pedir.</div>` : ""}` },
-    ], filas)}
+    ], filas)}</details>
     <details class="traza"><summary>Cómo se calcula</summary><ul>
       <li><b>d y σ</b>: demanda diaria promedio y desvío estándar muestral de los retiros por venta de cada día del período (${res.series.L} días), incluidos los días sin venta. Baja confianza si hay menos de ${dec(P.v("min_periodos_confianza"), 0)} períodos ${origen(P.leer("min_periodos_confianza").origen)} o menos de ${dec(P.v("min_dias_venta_confianza"), 0)} días con venta ${origen(P.leer("min_dias_venta_confianza").origen, P.leer("min_dias_venta_confianza").razon)}.</li>
       <li><b>Modelo</b>: cantidad fija con revisión continua: se pide un lote Q cada vez que el stock baja al punto de pedido. El período de revisión es 0 porque cada movimiento actualiza el stock al instante (LT = plazo de reposición). Se usa el modelo probabilístico cuando el coeficiente de variabilidad CV = σ² ÷ d² es 0,2 o más.</li>
@@ -719,12 +768,10 @@ function pintarParametros(res) {
   for (const x of globales) (porCat[x.categoria] ||= []).push(x);
   const defsProd = Object.values(P.defs).filter((d) => d.ambito === "producto").sort((a, b) => a.orden - b.orden);
   const valor = (x) => (x.valor === null ? `<span class="falta-valor">sin dato</span>` : `<b>${x.unidad === "fecha AAAAMMDD" ? fechaMeta(x.valor) : String(x.unidad).startsWith("USD") ? usd(x.valor).replace(/^USD\s/, "") : dec(x.valor, 2)}</b>`);
-  const conteo = { supuesto: 0, faltante: 0, usuario: 0 };
-  for (const x of globales) conteo[x.origen]++;
-  for (const p of res.series.productos) for (const d of defsProd) conteo[P.leer(d.clave, p.codigo).origen]++;
+  const conteo = conteoOrigen(res);
   const b = estadoVista.el.querySelector("#b-param");
-  b.innerHTML = `<div class="bloque-cab"><h2>Parámetros y supuestos</h2>
-      <p class="bloque-sub">${conteo.supuesto} supuestos · ${conteo.faltante} faltantes · ${conteo.usuario} cargados por usuario. ${admin ? "" : "Los edita un administrador."}</p>
+  b.innerHTML = `<div class="bloque-cab"><h2>Costos y supuestos que usa el cálculo</h2>
+      <p class="bloque-sub">${conteo.supuesto} supuestos · ${conteo.faltante} faltantes · ${conteo.usuario} cargados por usuario. Al cambiar un valor se recalcula todo el tablero.${admin ? "" : " Los edita un administrador."}</p>
       <div class="leyenda-org">${origen("real")} ${origen("usuario")} ${origen("supuesto")} ${origen("faltante")}</div></div>
     <div class="param-grupos">
     ${Object.entries(porCat).map(([cat, xs]) => `<div class="param-grupo"><h3>${esc(GRUPOS[cat] || cat)}</h3>

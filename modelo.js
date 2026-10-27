@@ -329,6 +329,9 @@ function calcular(S, P, variacion, ns) {
   tot.faltaActual = filas.reduce((a, x) => a + x.simA.unidadesFaltantes, 0);
   tot.faltaPropuesta = filas.reduce((a, x) => a + x.simP.unidadesFaltantes, 0);
   tot.ventas = filas.reduce((a, x) => a + x.pol.demandaTotal, 0);
+  // Órdenes de compra del período: hoy, las recepciones registradas; propuesta, retiros ÷ Q en régimen (las mismas que entran en el costo).
+  tot.ordenesActual = filas.reduce((a, x) => a + x.prod.ordenes.reduce((b, c) => b + c, 0), 0);
+  tot.ordenesPropuesta = filas.reduce((a, x) => a + (x.pol.calculable ? x.pol.ordenesPeriodo : x.prod.ordenes.reduce((b, c) => b + c, 0)), 0);
   return { filas, tot, f };
 }
 
