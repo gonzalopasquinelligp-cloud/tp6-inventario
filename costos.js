@@ -1,8 +1,8 @@
 // Costo y servicio: tablero para decidir si se puede bajar el costo del inventario sin perder nivel de servicio.
 // Los datos vienen del servidor (analisis_datos); los cálculos están en modelo.js con sus fórmulas a la vista.
-import { rpc, puede, leer } from "./api.js?v=202610272312";
-import { esc, num, aviso, ICON, tabla, pedir, toast, descargarCSV, usd, dec, pct, origen, fechaHora, TZ } from "./ui.js?v=202610272312";
-import { analizar, zDeNS, CATEGORIAS, MOTIVOS } from "./modelo.js?v=202610272312";
+import { rpc, puede, leer } from "./api.js?v=202610272323";
+import { esc, num, aviso, ICON, tabla, pedir, toast, descargarCSV, usd, dec, pct, origen, fechaHora, TZ } from "./ui.js?v=202610272323";
+import { analizar, zDeNS, CATEGORIAS, MOTIVOS } from "./modelo.js?v=202610272323";
 
 const fCorta = (iso) => { const [, m, d] = iso.split("-"); return `${d}/${m}`; };
 const fLarga = (iso) => iso.split("-").reverse().join("/");
@@ -172,10 +172,10 @@ function pintarRespuesta(res) {
   const faltaServicio = !c.veredicto.startsWith("Sí") && dif < -0.005;
   const titulo = c.tono === "si" ? "Aplicar la política propuesta" : faltaServicio ? "No aplicar: faltaría mercadería" : "No aplicar: cuesta más que hoy";
   const frase = c.tono === "si"
-    ? `Baja el costo de ${usd(A)} a ${usd(B)}${pctTxt} y entrega el ${pct(t.otifPropuesta)} de los pedidos.`
+    ? `Baja el costo del inventario en ${res.series.L} días de ${usd(A)} a ${usd(B)}${pctTxt} y entrega el ${pct(t.otifPropuesta)} de los pedidos.`
     : faltaServicio
-      ? `Bajaría el costo de ${usd(A)} a ${usd(B)}${pctTxt}, pero dejaría ${num(t.faltaPropuesta)} unidades sin entregar (entregas ${pct(t.otifPropuesta)}, hoy ${pct(t.otifActual)}).`
-      : `Costaría ${usd(B)} contra ${usd(A)} de hoy${pctTxt}.`;
+      ? `Bajaría el costo del inventario en ${res.series.L} días de ${usd(A)} a ${usd(B)}${pctTxt}, pero dejaría ${num(t.faltaPropuesta)} unidades sin entregar (entregas ${pct(t.otifPropuesta)}, hoy ${pct(t.otifActual)}).`
+      : `En ${res.series.L} días costaría ${usd(B)} contra ${usd(A)} de hoy${pctTxt}.`;
   const baja = res.filas.filter((x) => x.pol.bajaConfianza && !x.pol.sinDemanda).length;
   const conVentas = res.filas.filter((x) => !x.pol.sinDemanda).length;
   const prueba = res.variacion !== 0 || res.ns !== P.v("nivel_servicio") || res.porClase.activo;
@@ -194,7 +194,6 @@ function pintarRespuesta(res) {
       <div class="fig-c">Hoy ${hoy} ${dlt}</div>${nota ? `
       <div class="fig-f">${nota}</div>` : ""}
       </div>`; };
-  const sOrden = P.v("costo_orden");
   const porque = motivos(res);
   const cuenta = conteoOrigen(res);
   estadoVista.el.querySelector("#respuesta").innerHTML = `
@@ -204,18 +203,13 @@ function pintarRespuesta(res) {
       <span class="resp-texto">${frase}</span>
     </div>
     <p class="resp-cambia"><b>${c.tono === "si" ? "Qué cambia" : "Qué cambiaría"}:</b> ${accionCompra(res)}</p>
+    ${cuentas(res, periodo)}
     <div class="resp-ir">
       <button class="btn prim" type="button" data-ir="b-politica">Ver la política propuesta</button>
       <button class="btn" type="button" data-ir="b-param">Revisar costos y supuestos<span class="resp-ir-n">${cuenta.supuesto} supuestos, ${cuenta.faltante} faltantes</span></button>
     </div>
     ${prueba ? `<p class="resp-escenario"><span class="org org-sim">Prueba</span> Escenario de prueba: ventas ${signoVar(res.variacion)}, nivel de servicio ${nsTxt(res)}. No se guarda.</p>` : ""}
-    <div class="figuras figuras-5" id="kpis" aria-label="Propuesta contra hoy">
-      ${figura("prop", `Costo del inventario en ${res.series.L} días`, usd0(t.propuesta.total), usd0(t.actual.total), delta(t.actual.total, t.propuesta.total, true, usd0),
-        `Capital + almacenamiento + órdenes de compra + devoluciones, ${periodo}. Propuesta en régimen: stock promedio SS + Q ÷ 2.`,
-        `Capital, depósito, compras (${sOrden === null ? "costo por compra sin dato" : `${usd0(sOrden)} cada una, por producto`}) y devoluciones. No incluye el precio de la mercadería.`)}
-      ${figura("prop", "Mercadería en depósito, en promedio", usd0(t.valorPromPropuesta), usd0(t.valorPromActual), delta(t.valorPromActual, t.valorPromPropuesta, true, usd0),
-        `Promedio de los ${res.series.L} días del valor del stock de todos los productos (unidades × costo unitario). Propuesta: (SS + Q ÷ 2) × costo unitario.`,
-        "Lo que vale el stock de todos los productos, a costo de compra.")}
+    <div class="figuras" id="kpis" aria-label="Servicio: propuesta contra hoy">
       ${figura("prop", "Entregas que se cumplen (OTIF)", pct(t.otifPropuesta), pct(t.otifActual), delta(t.otifActual, t.otifPropuesta, false, (x) => `${dec(x * 100, 1)} puntos`, false),
         `Líneas de venta entregadas completas ÷ ${t.lineas} líneas del período. Simulado: cada retiro por venta es un pedido de ese día.`)}
       ${figura("prop", "Unidades que faltarían", `${num(t.faltaPropuesta)}\u00a0un.`, `${num(t.faltaActual)}\u00a0un.`, delta(t.faltaActual, t.faltaPropuesta, true, (x) => `${num(x)}\u00a0un.`),
@@ -223,10 +217,10 @@ function pintarRespuesta(res) {
       ${figura("prop", "Aguanta subas de ventas de hasta", margenTxt(mg.propuesta), margenTxt(mg.actual), "",
         `Mayor aumento de ventas, de 5 en 5 %, sin unidades faltantes, con la política calculada hoy (sin recalcularla).${mg.propuesta.falla !== null ? ` Con +${mg.propuesta.falla} % la propuesta deja ${num(mg.propuesta.falta)} un. sin entregar.` : ""}${mg.actual.falla !== null ? ` Hoy falta mercadería desde +${mg.actual.falla} %.` : ""}`)}
     </div>
-    <details class="traza"><summary>Cómo se calcula cada número</summary><ul>${formulas.map(([t, f]) => `<li><b>${t}</b>: ${esc(f)}</li>`).join("")}</ul></details>
+    <details class="traza"><summary>Cómo se calcula cada número</summary><ul>${formulasCosto(res, periodo).map(([t, f]) => `<li><b>${t}</b>: ${esc(f)}</li>`).join("")}${formulas.map(([t, f]) => `<li><b>${t}</b>: ${esc(f)}</li>`).join("")}</ul></details>
     <p class="resp-metas" id="resp-metas"></p>
     <div class="resp-pie">
-      <div><h3>Por qué</h3><ul class="resp-porque">${porque.map((x) => `<li>${x}</li>`).join("")}</ul></div>
+      ${porque.length ? `<div><h3>A tener en cuenta</h3><ul class="resp-porque">${porque.map((x) => `<li>${x}</li>`).join("")}</ul></div>` : ""}
       <p class="resp-aviso"><a href="#/gestion/${res.series.dias[0]}/${res.series.dias[res.series.L - 1]}">Ver valorización, rotación y clasificación ABC / XYZ en el tablero de gestión</a></p>
       ${baja ? `<p class="resp-aviso"><span class="conf conf-baja">Baja confianza</span> ${baja} de ${conVentas} productos vendieron pocos días: tomá el resultado como orientativo. <a href="#sec-limites" id="ir-limites">Ver límites del resultado</a></p>` : ""}
     </div>`;
@@ -241,34 +235,66 @@ const cantOrd = (n) => (n < 10 ? dec(n, 1).replace(/,0$/, "") : num(Math.round(n
 const lista = (xs) => (xs.length > 1 ? `${xs.slice(0, -1).join(", ")} y ${xs[xs.length - 1]}` : xs.join(""));
 const montoSigno = (v) => `${v > 0 ? "+" : "−"}${usd(Math.abs(v))}`;
 
-// La acción concreta de la propuesta: cuándo y cuánto comprar, cuántas órdenes y qué pasa con el stock.
+// La acción concreta de la propuesta: cuándo y cuánto comprar.
 function accionCompra(res) {
-  const t = res.tot, L = res.series.L;
   const sinVentas = res.filas.filter((x) => x.pol.calculable && x.pol.sinDemanda).map((x) => x.prod.codigo);
-  const vA = t.valorPromActual, vP = t.valorPromPropuesta;
-  const stock = vP < vA - 0.005 ? `${montoSigno(Math.round(vP) - Math.round(vA)).replace(/,00$/, "")}, menos plata parada`
-    : vP > vA + 0.005 ? `${montoSigno(Math.round(vP) - Math.round(vA)).replace(/,00$/, "")}, más mercadería` : "sin cambio";
-  return `comprar cada producto cuando su stock baja al punto de pedido, siempre en el mismo lote${sinVentas.length ? `, y no reponer ${lista(sinVentas)} hasta que vuelvan a venderse` : ""}.`
-    + `<span class="resp-cambia-dato">Compras en ${L} días: <b>hoy ${cantOrd(t.ordenesActual)} → propuesta ${cantOrd(t.ordenesPropuesta)}</b></span>`
-    + `<span class="resp-cambia-dato">Mercadería en depósito, en promedio: <b>hoy ${usd0(vA)} → propuesta ${usd0(vP)}</b> (${stock})</span>`
-    + `<span class="resp-cambia-dato">Entregas: <b>hoy ${pct(t.otifActual)} → propuesta ${pct(t.otifPropuesta)}</b></span>`;
+  return `comprar cada producto cuando su stock baja al punto de pedido, siempre en el mismo lote${sinVentas.length ? `, y no reponer ${lista(sinVentas)} hasta que vuelvan a venderse` : ""}.`;
 }
 
-// Por qué: de dónde sale la diferencia de costo, en términos de lo que se hace distinto.
-function motivos(res) {
-  const t = res.tot, out = [];
-  const dO = t.propuesta.orden - t.actual.orden;
-  const dS = ["capital", "almacenamiento", "obsolescencia"].reduce((a, k) => a + (t.propuesta[k] - t.actual[k]), 0);
-  const nA = cantOrd(t.ordenesActual), nP = cantOrd(t.ordenesPropuesta);
-  const sOrden = res.P.v("costo_orden");
-  const porCompra = sOrden === null ? "" : ` (${usd0(sOrden)} por cada compra de un producto)`;
+// Tasa de tener stock en los días del período (capital + almacenamiento + obsolescencia, anuales).
+const tasaPeriodo = (P, L) => ((P.v("tasa_capital") || 0) + (P.v("tasa_almacenamiento") || 0) + (P.v("tasa_obsolescencia") || 0)) * L / 365;
+
+// Las dos cuentas, separadas porque no se pueden sumar:
+// 1) el costo del período (se repite cada período) y 2) la plata en mercadería (cambia una sola vez).
+function cuentas(res, periodo) {
+  const t = res.tot, P = res.P, L = res.series.L, sOrden = P.v("costo_orden");
+  const suma = (lado, ks) => ks.reduce((a, k) => a + t[lado][k], 0);
+  const TENER = ["capital", "almacenamiento", "obsolescencia"];
+  const dif = (a, b) => (Math.abs(b - a) < 0.005 ? `<span class="muted">sin cambio</span>` : `<span class="${b < a ? "mejor" : "peor"}">${b - a > 0 ? "+" : "−"}${usd0(Math.abs(b - a))}</span>`);
+  const tasas = [["capital", "tasa_capital"], ["depósito", "tasa_almacenamiento"], ["obsolescencia", "tasa_obsolescencia"]].filter(([, k]) => P.v(k));
+  const filas = [
+    { t: "Compras", n: `${sOrden === null ? "costo por compra sin dato" : `${usd0(sOrden)} cada una, por producto`}`, a: t.actual.orden, b: t.propuesta.orden,
+      na: `${cantOrd(t.ordenesActual)} compras`, nb: `${cantOrd(t.ordenesPropuesta)} compras` },
+    { t: "Tener la mercadería", n: `${dec(tasaPeriodo(P, L), 2)}\u00a0% de su valor en ${L} días (${tasas.map(([x, k]) => `${x} ${dec(P.v(k) * L / 365, 2)}\u00a0%`).join(" + ")})`,
+      a: suma("actual", TENER), b: suma("propuesta", TENER) },
+    { t: "Devoluciones", a: t.actual.devoluciones, b: t.propuesta.devoluciones },
+    { t: "Manipulación", a: t.actual.manipulacion, b: t.propuesta.manipulacion },
+    { t: "Unidades no entregadas", a: t.actual.quiebre, b: t.propuesta.quiebre },
+  ].filter((f, i) => i < 2 || f.a > 0.005 || f.b > 0.005);
   const vA = t.valorPromActual, vP = t.valorPromPropuesta, dV = Math.round(vP) - Math.round(vA);
-  if (Math.abs(dO) >= 0.01) out.push(dO < 0
-    ? `<b>Se pide menos veces:</b> hoy ${nA} compras → propuesta ${nP}. Pedir cuesta ${usd(-dO)} menos${porCompra}.`
-    : `<b>Se pide más veces:</b> hoy ${nA} compras → propuesta ${nP}. Pedir cuesta ${usd(dO)} más${porCompra}.`);
-  if (Math.abs(dS) >= 0.01) out.push(dS < 0
-    ? `<b>Hay menos plata parada:</b> mercadería en depósito, en promedio: hoy ${usd0(vA)} → propuesta ${usd0(vP)} (${montoSigno(dV).replace(/,00$/, "")}). Tenerla cuesta ${usd(-dS)} menos en capital y almacenamiento.`
-    : `<b>Hay más mercadería en depósito</b>, en promedio: hoy ${usd0(vA)} → propuesta ${usd0(vP)} (${montoSigno(dV).replace(/,00$/, "")}). Tenerla cuesta ${usd(dS)} más en capital y almacenamiento${dO < 0 && -dO > dS ? `, menos de lo que se ahorra en compras` : ""}.`);
+  const plata = dV < 0 ? { cl: "mejor", t: `Se liberan ${usd0(-dV)}`, n: "Es plata que deja de estar en mercadería al bajar el stock, una sola vez. No se suma al ahorro del período: lo que se ahorra por tener menos mercadería ya está en «Tener la mercadería»." }
+    : dV > 0 ? { cl: "peor", t: `Hay que invertir ${usd0(dV)}`, n: "Es la compra extra para pasar a lotes más grandes, una sola vez. No es un gasto: esa mercadería se vende después. Lo que cuesta tenerla ya está en «Tener la mercadería»." }
+    : { cl: "", t: "Sin cambio", n: "La propuesta tiene, en promedio, la misma mercadería que hoy." };
+  return `<div class="cuentas">
+    <section class="cuenta" aria-label="Costo del período">
+      <h3>Costo del inventario en ${L} días <small>se repite en cada período</small></h3>
+      <table class="cuenta-t"><thead><tr><th scope="col"></th><th scope="col" class="num">Hoy</th><th scope="col" class="num">Propuesta</th><th scope="col" class="num">Diferencia</th></tr></thead><tbody>
+      ${filas.map((f) => `<tr><th scope="row">${f.t}${f.n ? `<div class="nota">${esc(f.n)}</div>` : ""}</th>
+        <td class="num" data-t="Hoy">${usd0(f.a)}${f.na ? `<div class="nota">${f.na}</div>` : ""}</td><td class="num" data-t="Propuesta">${usd0(f.b)}${f.nb ? `<div class="nota">${f.nb}</div>` : ""}</td><td class="num" data-t="Diferencia">${dif(f.a, f.b)}</td></tr>`).join("")}
+      </tbody><tfoot><tr><th scope="row">${t.propuesta.total <= t.actual.total ? "Ahorro" : "Costo extra"} en ${L} días</th><td class="num" data-t="Hoy">${usd0(t.actual.total)}</td><td class="num" data-t="Propuesta">${usd0(t.propuesta.total)}</td><td class="num" data-t="Diferencia"><b>${dif(t.actual.total, t.propuesta.total)}</b></td></tr></tfoot></table>
+      <p class="nota">No incluye el precio de la mercadería: se compran las mismas unidades con las dos políticas.</p>
+    </section>
+    <section class="cuenta" aria-label="Plata en mercadería">
+      <h3>Plata en mercadería <small>una sola vez</small></h3>
+      <p class="cuenta-linea">Mercadería en depósito, en promedio: <b>hoy ${usd0(vA)} → propuesta ${usd0(vP)}</b></p>
+      <p class="cuenta-grande ${plata.cl}">${plata.t}</p>
+      <p class="nota">${plata.n}</p>
+    </section>
+  </div>`;
+}
+
+// Fórmulas de las dos cuentas, para «Cómo se calcula cada número».
+function formulasCosto(res, periodo) {
+  const P = res.P, L = res.series.L;
+  return [
+    [`Costo del inventario en ${L} días`, `Compras + tener la mercadería + devoluciones, ${periodo}. Compras: hoy, recepciones registradas × costo por compra; propuesta, retiros ÷ lote Q de cada producto × costo por compra. Tener la mercadería: valor promedio del stock × ${dec(tasaPeriodo(P, L), 2)} % (lo que cuesta tenerla ${L} días); hoy, con el stock registrado de cada día; propuesta, con (SS + Q ÷ 2) × costo unitario.`],
+    ["Plata en mercadería", `Promedio de los ${L} días del valor del stock de todos los productos (unidades × costo unitario). Propuesta: suma de (SS + Q ÷ 2) × costo unitario. Es un saldo, no un gasto del período: no se suma al costo.`],
+  ];
+}
+
+// A tener en cuenta: si la conclusión depende del costo por compra y dónde faltaría mercadería.
+function motivos(res) {
+  const out = [];
   const eq = res.equilibrioOrden;
   if (eq && eq.valor === null) out.push(`<b>La conclusión no depende del costo por compra:</b> la propuesta cuesta ${eq.propuestaSiempreMasBarata ? "menos" : "más"} que hoy con cualquier valor entre ${usd0(eq.desde)} y ${usd0(eq.hasta)}.`);
   else if (eq) out.push(`<b>La conclusión depende del costo por compra:</b> con ${usd(eq.valor)} por compra las dos cuestan lo mismo; ${eq.propuestaMasCaraDebajo ? "por debajo" : "por encima"} la propuesta cuesta más. Hoy se usan ${usd(res.P.v("costo_orden") ?? 0)}.`);
@@ -579,7 +605,7 @@ function pintarLimites(res) {
     <h3>Límites de este resultado</h3><ul class="lista">${res.conclusion.limites.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>
     ${res.conclusion.detalle.length > 3 ? `<h3>Más conclusiones</h3><ul class="lista">${res.conclusion.detalle.slice(3).map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
     <h3>Cómo se calcula</h3><ul class="lista">
-      <li><b>Costo de hoy</b> = capital (stock del día × costo unitario × ${dec(P.v("tasa_capital"), 2)} % ÷ 365) + almacenamiento (igual con ${dec(P.v("tasa_almacenamiento"), 2)} %) + órdenes de compra (${usd(P.v("costo_orden"))} por recepción) + devoluciones (costo por evento + valor perdido según el motivo).</li>
+      <li><b>Costo de hoy</b> en ${res.series.L} días = capital (valor promedio del stock × ${dec((P.v("tasa_capital") || 0) * res.series.L / 365, 2)} %) + almacenamiento (igual con ${dec((P.v("tasa_almacenamiento") || 0) * res.series.L / 365, 2)} %) + órdenes de compra (${usd(P.v("costo_orden"))} por recepción) + devoluciones (costo por evento + valor perdido según el motivo).</li>
       <li><b>Propuesta</b>: stock de seguridad SS = z × σ × √plazo; pedir cuando el stock baja a ROP = demanda diaria × plazo + SS; lote Q = máx(lote económico, lote mínimo); máximo = SS + Q. Su costo usa el stock promedio SS + Q ÷ 2 y la cantidad de pedidos (retiros ÷ Q).</li>
       <li><b>Entregas (OTIF)</b>: cada retiro por venta registrado es un pedido de ese día. Se entrega completo si hay stock; si no, falta. Hoy: con las recepciones registradas. Propuesta: arranca en el máximo y repone Q al llegar al punto de pedido; el pedido llega a los días del plazo.</li>
       <li><b>Costo de compra</b> (demanda × costo unitario): no se suma porque es igual en las dos políticas; se compran las mismas unidades.</li>
@@ -591,7 +617,7 @@ function pintarLimites(res) {
 // Política de stock por producto
 // ---------------------------------------------------------------------
 function pintarPolitica(res) {
-  const P = res.P;
+  const P = res.P, L = res.series.L;
   const conOrigen = (valor, fila, fmt = (x) => dec(x, 2)) => `${fila.valor === null ? "—" : fmt(valor)} ${origen(fila.origen, fila.razon)}`;
   const tSS = (x) => {
     const p = x.pol;
@@ -604,8 +630,9 @@ function pintarPolitica(res) {
   const tROP = (p) => (p.calculable && !p.sinDemanda ? `ROP = d × LT + SS = ${dec(p.dbar, 3)} × ${dec(p.LT)} + ${p.SS} = ${dec(p.ropExacto, 2)} → ${p.ROP}` : "");
   const tQ = (p) => {
     if (!p.calculable || p.sinDemanda) return "Sin demanda: no se repone.";
-    const eoq = p.EOQ === null ? "EOQ no calculable (falta costo unitario o costo por orden)" : `EOQ = √(2 × D × S ÷ H) = √(2 × ${dec(p.Da, 1)} × ${dec(p.S, 2)} ÷ ${dec(p.H, 3)}) = ${dec(p.EOQ, 1)}`;
-    return `${eoq}; D = d × 365; H = costo unitario × (capital + almacenamiento + obsolescencia) = ${dec(p.c, 2)} × ${dec(p.tasas, 2)} %. Q = máx(EOQ, lote mínimo ${p.lote ?? "—"}) = ${p.Q}`;
+    const Dp = p.Da * L / 365, Hp = p.H * L / 365;
+    const eoq = p.EOQ === null ? "EOQ no calculable (falta costo unitario o costo por orden)" : `EOQ = √(2 × D × S ÷ H) = √(2 × ${dec(Dp, 1)} × ${dec(p.S, 2)} ÷ ${dec(Hp, 4)}) = ${dec(p.EOQ, 1)}, con D = ventas en ${L} días y H = costo de tener una unidad ${L} días (${dec(p.c, 2)} × ${dec(p.tasas * L / 365, 2)} %)`;
+    return `${eoq}; Q = máx(EOQ, lote mínimo ${p.lote ?? "—"}) = ${p.Q}`;
   };
   const filas = res.filas;
   const conVentas = filas.filter((x) => !x.pol.sinDemanda);
@@ -657,7 +684,7 @@ function pintarPolitica(res) {
       <li><b>Modelo</b>: cantidad fija con revisión continua: se pide un lote Q cada vez que el stock baja al punto de pedido. El período de revisión es 0 porque cada movimiento actualiza el stock al instante (LT = plazo de reposición). Se usa el modelo probabilístico cuando el coeficiente de variabilidad CV = σ² ÷ d² es 0,2 o más.</li>
       <li><b>Stock de seguridad</b>: SS = z × σ × √LT. Si se carga el desvío del plazo (σLT), se usa SS = z × √(LT × σ² + d² × σLT²). Se redondea hacia arriba.</li>
       <li><b>Punto de reorden</b>: ROP = d × LT + SS.</li>
-      <li><b>Lote Q</b>: el mayor entre el lote económico EOQ = √(2 × D × S ÷ H) y el lote mínimo. D = demanda anual (d × 365), S = costo por orden, H = costo anual de mantener una unidad.</li>
+      <li><b>Lote Q</b>: el mayor entre el lote económico EOQ = √(2 × D × S ÷ H) y el lote mínimo. D = ventas del período (${res.series.L} días), S = costo por compra, H = costo de tener una unidad durante el período. Da lo mismo medir D y H por día, por período o por año, siempre que sea el mismo.</li>
       <li><b>Riesgo de quiebre</b>: «Alto» si en la simulación del período la política propuesta dejó unidades sin entregar; «Sin quiebre, baja confianza» si entregó todo pero σ es poco confiable; «Bajo» si entregó todo con σ confiable. La probabilidad teórica de quiebre por ciclo es 1 − nivel de servicio.</li>
       <li>Los valores con subrayado punteado dependen de al menos un supuesto.</li>
     </ul></details>`;
@@ -687,7 +714,7 @@ function pintarCostos(res) {
   const ceros = CATEGORIAS.filter((k) => !usadas.includes(k));
   const motivoCero = {
     manipulacion: () => `${usd(P.v("costo_manipulacion"))} por unidad ${origen(P.leer("costo_manipulacion").origen, P.leer("costo_manipulacion").razon)}`,
-    obsolescencia: () => `${dec(P.v("tasa_obsolescencia"), 2)} % anual ${origen(P.leer("tasa_obsolescencia").origen, P.leer("tasa_obsolescencia").razon)}`,
+    obsolescencia: () => `${dec(P.v("tasa_obsolescencia"), 2)} % por año ${origen(P.leer("tasa_obsolescencia").origen, P.leer("tasa_obsolescencia").razon)}`,
     quiebre: () => P.v("costo_quiebre") === null ? `no se monetiza ${origen("faltante", P.leer("costo_quiebre").razon)}; se mide en unidades y OTIF` : "sin unidades no entregadas",
     devoluciones: () => "sin retornos en el período", orden: () => "sin recepciones en el período",
     capital: () => "sin stock valorizado", almacenamiento: () => "sin stock valorizado",
@@ -712,7 +739,7 @@ function pintarCostos(res) {
     </div>
     <details class="traza"><summary>Cómo se calcula</summary><ul>
       <li><b>Actual</b>: suma diaria de cada categoría sobre el stock registrado (ver «Cómo se calcula» de los gráficos).</li>
-      <li><b>Propuesta</b>: capital = (SS + Q ÷ 2) × costo unitario × ${dec(P.v("tasa_capital"), 2)} % × ${res.series.L} ÷ 365; almacenamiento y obsolescencia igual con su tasa; órdenes = retiros del período ÷ Q × ${usd(P.v("costo_orden"))}; devoluciones y manipulación iguales a la situación actual (no dependen de la política de stock); quiebre = unidades no entregadas × costo de quiebre, solo si está cargado.</li>
+      <li><b>Propuesta</b>: capital = (SS + Q ÷ 2) × costo unitario × ${dec((P.v("tasa_capital") || 0) * res.series.L / 365, 2)} % (lo que cuesta en ${res.series.L} días); almacenamiento y obsolescencia igual con su tasa; órdenes = retiros del período ÷ Q × ${usd(P.v("costo_orden"))}; devoluciones y manipulación iguales a la situación actual (no dependen de la política de stock); quiebre = unidades no entregadas × costo de quiebre, solo si está cargado.</li>
       <li>El costo unitario se supone igual al costo de reposición.</li>
     </ul></details>`;
 }
@@ -787,7 +814,7 @@ function pintarParametros(res) {
     ${Object.entries(porCat).map(([cat, xs]) => `<div class="param-grupo"><h3>${esc(GRUPOS[cat] || cat)}</h3>
       <ul class="param-lista">${xs.map((x) => `<li class="param o-${x.origen}">
         <div class="param-cab"><span class="param-nombre">${esc(x.etiqueta)}</span>${origen(x.origen, x.razon)}</div>
-        <div class="param-valor">${valor(x)} <span class="unidad">${esc(x.unidad)}</span>${admin ? ` <button class="btn chico" data-p="${esc(x.clave)}" data-prod="">Editar</button>` : ""}</div>
+        <div class="param-valor">${valor(x)} <span class="unidad">${esc(x.unidad)}</span>${/anual/.test(x.unidad) && x.valor !== null ? ` <span class="unidad">= ${dec(x.valor * res.series.L / 365, 2)}\u00a0% en ${res.series.L} días</span>` : ""}${admin ? ` <button class="btn chico" data-p="${esc(x.clave)}" data-prod="">Editar</button>` : ""}</div>
         <p class="param-razon">${esc(x.razon)}</p>
         <p class="param-desc">${esc(x.descripcion)}${x.actualizado_por && x.actualizado_por !== "carga inicial" ? ` Último cambio: ${esc(x.actualizado_por)}, ${fechaHora(x.actualizado_en)}.` : ""}</p></li>`).join("")}</ul></div>`).join("")}
     </div>

@@ -1,8 +1,8 @@
 // Tablero de gestión: valorización, rotación y clasificación ABC / XYZ del inventario.
 // Usa los mismos datos que «Costo y servicio» (analisis_datos); los cálculos están en modelo.js.
-import { rpc, leer } from "./api.js?v=202610272312";
-import { esc, num, aviso, ICON, tabla, descargarCSV, usd, dec, pct, origen, TZ } from "./ui.js?v=202610272312";
-import { clasificar } from "./modelo.js?v=202610272312";
+import { rpc, leer } from "./api.js?v=202610272323";
+import { esc, num, aviso, ICON, tabla, descargarCSV, usd, dec, pct, origen, TZ } from "./ui.js?v=202610272323";
+import { clasificar } from "./modelo.js?v=202610272323";
 
 const fLarga = (iso) => iso.split("-").reverse().join("/");
 const usd0 = (v) => (v === null || v === undefined ? "—" : `USD ${Math.round(v).toLocaleString("es-AR")}`);
@@ -82,13 +82,12 @@ function pintar(r, ex) {
       <div class="bloque-cab"><h2>Inventario del período</h2><p class="bloque-sub">${periodo}. ${supCosto ? `Valores con costos unitarios ${origen("supuesto", "Costos unitarios estimados: se editan en Costo y servicio › Parámetros y supuestos.")}.` : ""}</p></div>
       <div class="figuras figuras-4">
         ${fig("Valor del inventario al cierre", usd0(tot.valorFin), `Stock al ${fLarga(S.dias[L - 1])} × costo unitario, sumando los ${filas.length} productos.`)}
-        ${fig("Rotación, veces por año", tot.rotacion === null ? "—" : dec(tot.rotacion, 1), `Consumo valorizado anualizado ÷ inventario promedio valorizado = (${usd0(tot.consumo)} × 365 ÷ ${L}) ÷ ${usd0(tot.valorProm)}.`)}
+        ${fig(`Rotación en ${L} días`, tot.rotacion === null ? "—" : dec(tot.rotacion, 2), `Veces que se vendió el inventario en el período: consumo valorizado ÷ inventario promedio valorizado = ${usd0(tot.consumo)} ÷ ${usd0(tot.valorProm)}.`)}
         ${fig("Días de inventario", tot.dias === null ? "—" : dec(tot.dias, 0), `Inventario promedio valorizado ÷ consumo valorizado por día = ${usd0(tot.valorProm)} ÷ (${usd0(tot.consumo)} ÷ ${L}).`)}
         ${fig("Exactitud del último conteo", ex ? pct(ex.valor) : "sin conteo", ex ? `${ex.jornada}: ${ex.ok} de ${ex.lineas} registros sin diferencia.` : "No hay conteos hasta el final del período.")}
       </div>
       ${tot.sinVentas ? `<p class="g-nota"><b>${tot.sinVentas} producto${tot.sinVentas > 1 ? "s" : ""} sin ventas en el período</b> (${filas.filter((x) => x.sinVentas).map((x) => esc(x.codigo)).join(", ")}): ${usd0(filas.filter((x) => x.sinVentas).reduce((a, x) => a + (x.valorFin || 0), 0))} inmovilizados. </p>` : ""}
-      <details class="traza"><summary>Cómo se calcula cada número</summary><ul>${notas.map(([t, n]) => `<li><b>${t}</b>: ${esc(n)}</li>`).join("")}</ul>
-        <p>Rotación y días anualizan ${L} días: sirven para comparar productos, no como dato anual.</p></details>
+      <details class="traza"><summary>Cómo se calcula cada número</summary><ul>${notas.map(([t, n]) => `<li><b>${t}</b>: ${esc(n)}</li>`).join("")}</ul></details>
     </section>
 
     <section class="bloque" id="g-abc">
@@ -141,7 +140,7 @@ function pintar(r, ex) {
         { t: "Stock al cierre", num: true, html: (x) => num(x.stockFin) },
         { t: "Valor al cierre", num: true, html: (x) => usd0(x.valorFin) },
         { t: "Valor promedio", num: true, html: (x) => `<span title="Stock promedio ${dec(x.stockProm, 1)} un. × ${usd(x.c)}">${usd0(x.valorProm)}</span>` },
-        { t: "Rotación, veces/año", num: true, html: (x) => (x.rotacion === null ? "—" : `<span title="(${usd0(x.consumo)} × 365 ÷ ${L}) ÷ ${usd0(x.valorProm)}">${dec(x.rotacion, 1)}</span>`) },
+        { t: `Rotación en ${L} días`, num: true, html: (x) => (x.rotacion === null ? "—" : `<span title="${usd0(x.consumo)} ÷ ${usd0(x.valorProm)}">${dec(x.rotacion, 2)}</span>`) },
         { t: "Días de inventario", num: true, html: (x) => (x.dias === null ? "—" : `<span title="Stock promedio ÷ demanda diaria = ${dec(x.stockProm, 1)} ÷ ${dec(x.dbar, 2)}">${dec(x.dias, 0)}</span>`) },
       ], orden)}
     </section>`;
@@ -152,6 +151,6 @@ function pintar(r, ex) {
     { t: "ParteConsumoPct", f: (x) => dec(x.parte, 2) }, { t: "AcumuladoPct", f: (x) => dec(x.acumulado, 2) }, { t: "DemandaDiaria", f: (x) => dec(x.dbar, 4) },
     { t: "Desvio", f: (x) => dec(x.sigma, 4) }, { t: "CV", f: (x) => dec(x.cv, 4) }, { t: "StockCierre", f: (x) => x.stockFin },
     { t: "ValorCierreUSD", f: (x) => dec(x.valorFin, 2) }, { t: "ValorPromedioUSD", f: (x) => dec(x.valorProm, 2) },
-    { t: "RotacionAnual", f: (x) => dec(x.rotacion, 2) }, { t: "DiasInventario", f: (x) => dec(x.dias, 1) },
+    { t: "RotacionPeriodo", f: (x) => dec(x.rotacion, 3) }, { t: "DiasInventario", f: (x) => dec(x.dias, 1) },
     { t: "Desde", f: () => S.dias[0] }, { t: "Hasta", f: () => S.dias[L - 1] }]));
 }

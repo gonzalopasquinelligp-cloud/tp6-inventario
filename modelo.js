@@ -508,7 +508,7 @@ export function clasificar(datos) {
     const stockProm = p.stock.reduce((a, b) => a + b, 0) / L, stockFin = p.stock[L - 1];
     const consumo = c === null ? null : ventas * c;
     const valorProm = c === null ? null : stockProm * c, valorFin = c === null ? null : stockFin * c;
-    const rotacion = valorProm > 0 && consumo !== null ? (consumo * 365 / L) / valorProm : null;   // veces por año
+    const rotacion = valorProm > 0 && consumo !== null ? consumo / valorProm : null;   // veces en el período
     const dias = dbar > 0 ? stockProm / dbar : null;                                                 // días de inventario
     const cv = dbar > 0 && sigma !== null ? sigma / dbar : null;
     const xyz = cv === null ? null : cv <= cX.valor ? "X" : cv <= cY.valor ? "Y" : "Z";
@@ -526,7 +526,7 @@ export function clasificar(datos) {
   const sum = (k) => filas.reduce((a, x) => a + (x[k] || 0), 0);
   const tot = { consumo: totConsumo, valorProm: sum("valorProm"), valorFin: sum("valorFin"), ventas: sum("ventas"),
     stockProm: sum("stockProm"), sinVentas: filas.filter((x) => x.sinVentas).length, sinCosto: filas.filter((x) => x.c === null).length };
-  tot.rotacion = tot.valorProm > 0 ? (tot.consumo * 365 / L) / tot.valorProm : null;
+  tot.rotacion = tot.valorProm > 0 ? tot.consumo / tot.valorProm : null;
   tot.dias = tot.consumo > 0 ? tot.valorProm / (tot.consumo / L) : null;
   return { P, S, L, filas, tot, cortes: { cA, cB, cX, cY } };
 }
