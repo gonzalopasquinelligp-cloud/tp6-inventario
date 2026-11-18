@@ -1,8 +1,8 @@
 // Costo y servicio: tablero para decidir si se puede bajar el costo del inventario sin perder nivel de servicio.
 // Los datos vienen del servidor (analisis_datos); los cálculos están en modelo.js con sus fórmulas a la vista.
-import { rpc, puede, leer } from "./api.js?v=202610272358";
-import { esc, num, aviso, ICON, tabla, pedir, toast, descargarCSV, usd, dec, pct, origen, fechaHora, TZ } from "./ui.js?v=202610272358";
-import { analizar, zDeNS, CATEGORIAS, MOTIVOS } from "./modelo.js?v=202610272358";
+import { rpc, puede, leer } from "./api.js?v=202611181942";
+import { esc, num, aviso, ICON, tabla, pedir, toast, descargarCSV, usd, dec, pct, origen, fechaHora, TZ } from "./ui.js?v=202611181942";
+import { analizar, zDeNS, CATEGORIAS, MOTIVOS } from "./modelo.js?v=202611181942";
 
 const fCorta = (iso) => { const [, m, d] = iso.split("-"); return `${d}/${m}`; };
 const fLarga = (iso) => iso.split("-").reverse().join("/");
@@ -275,8 +275,9 @@ function cuentas(res, periodo) {
     { t: "Unidades no entregadas", a: t.actual.quiebre, b: t.propuesta.quiebre },
   ].filter((f, i) => i < 2 || f.a > 0.005 || f.b > 0.005);
   const vA = t.valorPromActual, vP = t.valorPromPropuesta, dV = Math.round(vP) - Math.round(vA);
-  const plata = dV < 0 ? { cl: "mejor", t: `Se liberan ${usd0(-dV)}`, n: "Es plata que deja de estar en mercadería al bajar el stock, una sola vez. No se suma al ahorro del período: lo que se ahorra por tener menos mercadería ya está en «Tener la mercadería»." }
-    : dV > 0 ? { cl: "peor", t: `Hay que invertir ${usd0(dV)}`, n: "Es la compra extra para pasar a lotes más grandes, una sola vez. No es un gasto: esa mercadería se vende después. Lo que cuesta tenerla ya está en «Tener la mercadería»." }
+  const tasaP = tasaPeriodo(P, L), cuentaTener = (v) => `${usd0(v)} × ${dec(tasaP, 2)}\u00a0% = ${usd0(v * tasaP / 100)}`;
+  const plata = dV < 0 ? { cl: "mejor", t: `Se liberan ${usd0(-dV)}`, n: `Es plata que deja de estar parada en mercadería, una sola vez: no se ahorra en cada período. Lo que sí se ahorra cada ${L} días es lo que costaba tenerla: ${cuentaTener(-dV)}, que ya está en «Tener la mercadería».` }
+    : dV > 0 ? { cl: "peor", t: `Hay que invertir ${usd0(dV)}`, n: `Es la compra extra para pasar a lotes más grandes, una sola vez. No es un gasto: esa mercadería se vende después. Lo que cuesta tenerla cada ${L} días es ${cuentaTener(dV)}, que ya está en «Tener la mercadería».` }
     : { cl: "", t: "Sin cambio", n: "La propuesta tiene, en promedio, la misma mercadería que hoy." };
   return `<div class="cuentas">
     <section class="cuenta" aria-label="Costo del período">
